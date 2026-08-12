@@ -1,0 +1,23 @@
+{{ partial "partials/head.html" (merge (dict "Title" .Node.Fields.name) .) }}
+<main><div class="container">
+  <div class="card">
+    <h2 style="margin-top:0;">{{ .Node.Fields.name }}</h2>
+    <p style="color:#6b7280;">{{ .Node.Fields.bio }}</p>
+  </div>
+  <div class="card">
+    <strong>任职经历</strong>
+    {{ range inRefs .ID "person" 1 10 }}
+    <div style="margin-top:8px;padding:8px;background:#f9fafb;border-radius:6px;">
+      {{ range outRefs .ID "org" 1 1 }}<b>{{ .Fields.name }}</b>{{ end }}
+      · {{ .Fields.role }} ({{ .Fields.tenure }})
+    </div>
+    {{ end }}
+  </div>
+  <div class="card">
+    <strong>发表文章</strong>
+    {{ range inRefs .ID "authors" 1 10 }}
+    <div style="margin-top:8px;"><a href="/node/{{ .Slug }}">{{ .Fields.title }}</a></div>
+    {{ end }}
+  </div>
+</div></main>
+{{ partial "partials/footer.html" . }}

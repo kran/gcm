@@ -1,0 +1,209 @@
+package core
+
+import (
+	"strconv"
+	"testing"
+)
+
+// ── ExpandPath: 表达式驱动的路径展开 ──────────────
+
+const expandPathTypes = `
+types:
+  category:
+    fields:
+      - { name: name, kind: string }
+      - { name: broader, kind: ref, to: category }
+  person:
+    fields:
+      - { name: name, kind: string }
+  org:
+    fields:
+      - { name: name, kind: string }
+  employment:
+    fields:
+      - { name: person, kind: ref, to: person }
+      - { name: org, kind: ref, to: org }
+  article:
+    fields:
+      - { name: title, kind: string }
+      - { name: authors, kind: "ref[]", to: person }
+      - { name: categories, kind: "ref[]", to: category }
+      - { name: employment, kind: "ref[]", to: employment }
+`
+
+// 并行多字段 + 自然形态（ref → 单值, ref[] → 数组）。
+func TestExpandPathParallel(t *testing.T) {
+	ts := newTypes(t, expandPathTypes)
+	s := New(testDB(t), ts)
+	cat, _ := s.Create(&Node{Type: "category", Fields: Fields{"name": "行业"}})
+	p1, _ := s.Create(&Node{Type: "person", Fields: Fields{"name": "张三"}})
+	p2, _ := s.Create(&Node{Type: "person", Fields: Fields{"name": "李四"}})
+	art, _ := s.Create(&Node{Type: "article", Fields: Fields{
+		"title": "甲", "authors": []any{p1, p2}, "categories": []any{cat}}})
+
+	root, err := s.ExpandPath(art, "authors, categories")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// authors: ref[] → 数组
+	as, ok := root.Expand["authors"].([]*Node)
+	if !ok || len(as) != 2 {
+		t.Fatalf("authors: %T %v", root.Expand["authors"], root.Expand["authors"])
+	}
+	// categories: ref[] → 数组（1 个）
+	cs, ok := root.Expand["categories"].([]*Node)
+	if !ok || len(cs) != 1 || cs[0].Fields["name"] != "行业" {
+		t.Fatalf("categories: %v", cs)
+	}
+}
+
+// 路径（点号）: categories.broader — 分类再展开 broader（ref → 单值）。
+func TestExpandPathChain(t *testing.T) {
+	ts := newTypes(t, expandPathTypes)
+	s := New(testDB(t), ts)
+	top, _ := s.Create(&Node{Type: "category", Fields: Fields{"name": "顶级"}})
+	mid, _ := s.Create(&Node{Type: "category", Fields: Fields{"name": "中层", "broader": top}})
+	art, _ := s.Create(&Node{Type: "article", Fields: Fields{"title": "甲", "categories": []any{mid}}})
+
+	root, err := s.ExpandPath(art, "categories.broader")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cs := root.Expand["categories"].([]*Node)
+	if len(cs) != 1 {
+		t.Fatalf("categories: %d", len(cs))
+	}
+	// 单值: broader → *Node
+	b, ok := cs[0].Expand["broader"].(*Node)
+	if !ok || b.Fields["name"] != "顶级" {
+		t.Fatalf("broader: %T %v", cs[0].Expand["broader"], cs[0].Expand["broader"])
+	}
+}
+
+// 入边（<-）: 分类下的文章。
+func TestExpandPathIn(t *testing.T) {
+	ts := newTypes(t, expandPathTypes)
+	s := New(testDB(t), ts)
+	cat, _ := s.Create(&Node{Type: "category", Fields: Fields{"name": "行业"}})
+	s.Create(&Node{Type: "article", Fields: Fields{"title": "甲", "categories": []any{cat}}})
+	s.Create(&Node{Type: "article", Fields: Fields{"title": "乙", "categories": []any{cat}}})
+
+	root, err := s.ExpandPath(cat, "<-categories")
+	if err != nil {
+		t.Fatal(err)
+	}
+	arts := root.Expand["categories"].([]*Node)
+	if len(arts) != 2 {
+		t.Fatalf("articles: %d", len(arts))
+	}
+}
+
+// 混合: 分类 ← 文章 → 作者（出入混合路径）。
+func TestExpandPathMixed(t *testing.T) {
+	ts := newTypes(t, expandPathTypes)
+	s := New(testDB(t), ts)
+	cat, _ := s.Create(&Node{Type: "category", Fields: Fields{"name": "行业"}})
+	p1, _ := s.Create(&Node{Type: "person", Fields: Fields{"name": "张三"}})
+	s.Create(&Node{Type: "article", Fields: Fields{"title": "甲", "categories": []any{cat}, "authors": []any{p1}}})
+
+	root, err := s.ExpandPath(cat, "<-categories.authors")
+	if err != nil {
+		t.Fatal(err)
+	}
+	arts := root.Expand["categories"].([]*Node)
+	if len(arts) != 1 {
+		t.Fatalf("articles: %d", len(arts))
+	}
+	as := arts[0].Expand["authors"].([]*Node)
+	if len(as) != 1 || as[0].Fields["name"] != "张三" {
+		t.Fatalf("authors: %v", as)
+	}
+}
+
+// 校验: 未知字段 fail-loud; 空表达式 fail。
+func TestExpandPathValidation(t *testing.T) {
+	ts := newTypes(t, expandPathTypes)
+	s := New(testDB(t), ts)
+	art, _ := s.Create(&Node{Type: "article", Fields: Fields{"title": "甲"}})
+	if _, err := s.ExpandPath(art, "ghost"); err == nil {
+		t.Fatal("unknown field must fail")
+	}
+	if _, err := s.ExpandPath(art, "  "); err == nil {
+		t.Fatal("empty expr must fail")
+	}
+	if _, err := s.ExpandPath(art, "title"); err == nil {
+		t.Fatal("non-ref field must fail")
+	}
+}
+
+// 批量 expand: 列表一次展开（查询次数与列表大小无关）。
+func TestExpandPathMany(t *testing.T) {
+	ts := newTypes(t, expandPathTypes)
+	s := New(testDB(t), ts)
+	cat, _ := s.Create(&Node{Type: "category", Fields: Fields{"name": "行业"}})
+	p1, _ := s.Create(&Node{Type: "person", Fields: Fields{"name": "张三"}})
+	p2, _ := s.Create(&Node{Type: "person", Fields: Fields{"name": "李四"}})
+	a1, _ := s.Create(&Node{Type: "article", Fields: Fields{"title": "甲", "categories": []any{cat}, "authors": []any{p1}}})
+	a2, _ := s.Create(&Node{Type: "article", Fields: Fields{"title": "乙", "categories": []any{cat}, "authors": []any{p2}}})
+
+	// 列表两篇, 一次展开 authors + categories
+	list, err := s.ExpandPathMany([]int64{a1, a2}, "authors, categories")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("list: %d", len(list))
+	}
+	for _, n := range list {
+		as := n.Expand["authors"].([]*Node)
+		if len(as) != 1 {
+			t.Fatalf("%s authors: %d", n.Fields["title"], len(as))
+		}
+		cs := n.Expand["categories"].([]*Node)
+		if len(cs) != 1 || cs[0].Fields["name"] != "行业" {
+			t.Fatalf("%s categories: %v", n.Fields["title"], cs)
+		}
+	}
+	// 列表展示: fields 标题可用（该测试类型未配 title 列声明）
+	if list[0].Fields["title"] != "甲" || list[1].Fields["title"] != "乙" {
+		t.Fatalf("titles: %v %v", list[0].Fields["title"], list[1].Fields["title"])
+	}
+}
+
+// 爆炸防护: 单字段超 1000 引用 → fail-loud（不静默截断）。
+func TestExpandOverflowFails(t *testing.T) {
+	s := newFilterSvc(t)
+	// 1500 个作者 + 1 篇文章挂满（绕过 title 用 categories? — article 有 categories ref[]）
+	ids := make([]any, 0, 1500)
+	for i := 0; i < 1500; i++ {
+		id, err := s.Create(&Node{Type: "category", Fields: Fields{"name": "c" + strconv.Itoa(i)}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	aid, err := s.Create(&Node{Type: "article", Fields: Fields{"title": "big", "categories": ids}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 单节点版
+	if _, err := s.ExpandPath(aid, "categories"); err == nil {
+		t.Fatal("single: 1500 refs must fail (not silently truncate)")
+	}
+	// 批量版
+	_, err = s.ExpandPathMany([]int64{aid}, "categories")
+	if err == nil {
+		t.Fatal("batch: 1500 refs must fail")
+	}
+}
+
+// 爆炸防护: 链深超 4 段 → fail-loud。
+func TestExpandDeepPathFails(t *testing.T) {
+	s := newFilterSvc(t)
+	p, _ := s.Create(&Node{Type: "person", Fields: Fields{"name": "张三"}})
+	a, _ := s.Create(&Node{Type: "article", Fields: Fields{"title": "x", "authors": []any{p}}})
+	_, err := s.ExpandPath(a, "authors.authors.authors.authors.authors")
+	if err == nil {
+		t.Fatal("5-segment path must fail (max 4)")
+	}
+}

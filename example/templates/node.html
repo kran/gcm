@@ -1,0 +1,8 @@
+{{ partial "partials/head.html" (merge (dict "Title" .Node.Slug) .) }}
+<main><div class="container">
+  <div class="card">
+    <h2 style="margin-top:0;">{{ .Node.Slug }} (#{{ .Node.ID }})</h2>
+    <p style="color:#9ca3af;">类型: {{ .Node.Type }}</p>
+  </div>
+</div></main>
+{{ partial "partials/footer.html" . }}

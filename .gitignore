@@ -1,0 +1,17 @@
+# 站点数据库（seed/运行时生成）
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# 构建产物
+/example/example
+/example/benchscale/benchscale
+/tmp/
+
+# IDE
+.idea/
+*.iml
+
+# 上传目录
+uploads/

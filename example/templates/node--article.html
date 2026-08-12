@@ -1,0 +1,18 @@
+{{ partial "partials/head.html" (merge (dict "Title" .Node.Fields.title) .) }}
+<main><div class="container">
+  <div class="card">
+    <h2 style="margin-top:0;">{{ .Node.Fields.title }}</h2>
+    <div class="meta">发布时间: {{ datefmt .Node.CreatedAt "2006-01-02" }} · 分类: {{ range outRefs .ID "categories" 1 10 }}<a href="/category/{{ .Slug }}">{{ .Fields.name }}</a> {{ end }}</div>
+  </div>
+  <div class="card" style="line-height:1.9;">{{ safeHTML .Node.Fields.body }}</div>
+  <div class="card">
+    <strong>作者</strong>
+    {{ range outRefs .ID "authors" 1 10 }}
+    <div style="margin-top:8px;">
+      <a href="/node/{{ .Slug }}" style="font-weight:600;">{{ .Fields.name }}</a>
+      <p style="color:#6b7280;font-size:13px;margin:4px 0;">{{ .Fields.bio }}</p>
+    </div>
+    {{ end }}
+  </div>
+</div></main>
+{{ partial "partials/footer.html" . }}

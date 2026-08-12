@@ -1,0 +1,392 @@
+// Package types gcm 的字段类型组件。
+//
+// 组件形态: 容器类型（Types, 分站一个实例）+ Kind 接口 + 内置具体实现。
+// - Kind 接口在 kind.go, 每个内置 kind 一个文件（string.go/ref.go/...）。
+// - Types 容器: New() 默认注册内置 kind, 站点用 RegisterKind 扩展（重复注册 panic）。
+// - 类型定义（TypeDef/Load/整体校验）是本文件的组织层; 代数校验是宪法, 不对外可改。
+//
+// 原则: fail-loud — 未知 kind / 重复注册 / 非法定义, 加载即报错, 绝不静默。
+package types
+
+import (
+	"errors"
+	"fmt"
+	"regexp"
+	"sort"
+
+	"gopkg.in/yaml.v3"
+)
+
+// TypeDef 类型定义。
+type TypeDef struct {
+	Name   string     `json:"name"`                 // 类型名（配置键）
+	URL    string     `yaml:"url" json:"url"`       // URL 模式: /article/{slug} 或 /node/{id}
+	Search bool       `yaml:"search" json:"search"` // 参与全文检索（FTS）
+	View   string     `yaml:"view" json:"view"`     // 展示形态: tree / list（空 = list）
+	Title  string     `yaml:"title" json:"title"`   // 标题字段名（映射到 nodes.title 列）; 空 = 无
+	Icon   string     `yaml:"icon" json:"icon"`     // 管理端图标名（Element Plus icon）; 空 = 默认
+	Fields []FieldDef `yaml:"fields" json:"fields"`
+}
+
+// TemplateCandidates 模板级联候选名: node--{type}.html → node.html。
+func (t TypeDef) TemplateCandidates() []string {
+	return []string{"node--" + t.Name + ".html", "node.html"}
+}
+
+// FieldDef 字段定义。代数声明在字段顶层:
+// symmetric / transitive / equivalence。
+// 边本身双向（OutRefs/InRefs 引擎原语）— 无需 reverse/inverse 声明。
+type FieldDef struct {
+	Name        string `yaml:"name" json:"name"`
+	Label       string `yaml:"label" json:"label"` // 显示名（表单/列表）; 空 = 回退字段名
+	Kind        string `yaml:"kind" json:"kind"`
+	To          string `yaml:"to" json:"to"` // ref/ref[]: 目标类型名
+	Required    bool   `yaml:"required" json:"required"`
+	Symmetric   bool   `yaml:"symmetric" json:"symmetric"`     // 对称: 存一次查双向
+	Transitive  bool   `yaml:"transitive" json:"transitive"`   // 传递: 可达性遍历
+	Equivalence bool   `yaml:"equivalence" json:"equivalence"` // 等价类展开
+}
+
+// Types 容器: 每站点一个实例, 持有本容器注册的 kind + 类型定义。
+type Types struct {
+	kinds map[string]Kind
+	defs  map[string]TypeDef
+}
+
+// New 建容器并默认注册内置 kind。
+func New() *Types {
+	t := &Types{kinds: map[string]Kind{}}
+	for _, k := range defaultKinds() {
+		t.kinds[k.Name()] = k
+	}
+	return t
+}
+
+// defaultKinds 内置实现清单（New 时注册; 每个实现一个文件）。
+func defaultKinds() []Kind {
+	return []Kind{
+		stringKind{},
+		textKind{},
+		richtextKind{},
+		numberKind{},
+		boolKind{},
+		imageKind{},
+		fileKind{},
+		refKind{},
+		refListKind{},
+	}
+}
+
+// RegisterKind 注册新字段类型（站点扩展）。重复注册 panic（fail-loud）。
+// 必须在 Load 之前调用。
+func (t *Types) RegisterKind(k Kind) {
+	if k == nil || k.Name() == "" {
+		panic("types: register kind: nil or empty name")
+	}
+	if _, ok := t.kinds[k.Name()]; ok {
+		panic(fmt.Sprintf("types: kind %q already registered", k.Name()))
+	}
+	t.kinds[k.Name()] = k
+}
+
+// Kind 取 kind 实现; 不存在返回 ok=false。
+func (t *Types) Kind(name string) (Kind, bool) {
+	k, ok := t.kinds[name]
+	return k, ok
+}
+
+// KindNames 已注册 kind 名（字典序，稳定输出）。
+func (t *Types) KindNames() []string {
+	out := make([]string, 0, len(t.kinds))
+	for name := range t.kinds {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// Load 解析并整体校验类型定义。非法定义响亮报错。
+func (t *Types) Load(raw []byte) error {
+	var cfg struct {
+		Types map[string]TypeDef `yaml:"types"`
+	}
+	if err := yaml.Unmarshal(raw, &cfg); err != nil {
+		return fmt.Errorf("types: parse: %w", err)
+	}
+	if len(cfg.Types) == 0 {
+		return errors.New("types: no types defined")
+	}
+	// map key 是类型名: 回填进 TypeDef.Name（yaml 不会自动写）
+	for name, td := range cfg.Types {
+		td.Name = name
+		cfg.Types[name] = td
+	}
+	defs := cfg.Types
+	if err := t.validate(defs); err != nil {
+		return err
+	}
+	t.defs = defs
+	return nil
+}
+
+// Type 取类型定义; 不存在返回 ok=false。
+func (t *Types) Type(name string) (TypeDef, bool) {
+	d, ok := t.defs[name]
+	return d, ok
+}
+
+// Names 全部类型名（字典序，稳定输出）。
+func (t *Types) Names() []string {
+	out := make([]string, 0, len(t.defs))
+	for name := range t.defs {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// Defs 全部类型定义（导出副本, admin UI 表单渲染用）。
+func (t *Types) Defs() map[string]TypeDef {
+	out := make(map[string]TypeDef, len(t.defs))
+	for k, v := range t.defs {
+		out[k] = v
+	}
+	return out
+}
+
+// Field 取类型字段; 不存在返回 ok=false。
+func (t *Types) Field(typeName, fieldName string) (FieldDef, bool) {
+	td, ok := t.defs[typeName]
+	if !ok {
+		return FieldDef{}, false
+	}
+	for _, f := range td.Fields {
+		if f.Name == fieldName {
+			return f, true
+		}
+	}
+	return FieldDef{}, false
+}
+
+// ── 整体校验（宪法）─────────────────────────────────
+
+var (
+	nameRe   = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+	urlRe    = regexp.MustCompile(`^/([a-z0-9_-]+/)?(\{slug\}|\{id\}|[a-z0-9_-]+)?$`)
+	reserved = map[string]bool{"node": true, "types": true, "settings": true}
+	// 节点列字段名: slug/status/sort 是 Node 的列（不是类型字段）,
+	// 类型定义声明它们会存进 fields JSON 而非列 — 防歧义, 直接拒绝
+	reservedField = map[string]bool{"slug": true, "status": true, "sort": true}
+	// nodeColumns 节点列全集（title 穿透路径第二段: 无 $. 前缀即列）;
+	// schema 常量唯一声明处（core 经 types.IsNodeColumn 引用）。
+	nodeColumns = map[string]bool{
+		"id": true, "type": true, "title": true, "slug": true,
+		"status": true, "sort": true, "created_at": true, "updated_at": true,
+	}
+)
+
+func (t *Types) validate(defs map[string]TypeDef) error {
+	// 容器只做通用校验（类型名/URL/字段名/重复/kind 存在）,
+	// 具体 kind 的字段约束由 kind 自己的 ValidateField 裁判。
+	for name, td := range defs {
+		if !nameRe.MatchString(name) {
+			return fmt.Errorf("types: type %q: must match %s", name, nameRe)
+		}
+		if reserved[name] {
+			return fmt.Errorf("types: type %q is reserved", name)
+		}
+		if td.URL != "" && !urlRe.MatchString(td.URL) {
+			return fmt.Errorf("types: type %q: url %q invalid (want /article/{slug} or /node/{id})", name, td.URL)
+		}
+		if td.Title != "" {
+			if err := t.validateTitle(name, td, defs); err != nil {
+				return err
+			}
+		}
+		if td.View == "tree" && !hasSelfRef(td) {
+			return fmt.Errorf("types: type %q: view 'tree' requires a self-ref field (ref to own type)", name)
+		}
+		seen := map[string]bool{}
+		for _, f := range td.Fields {
+			if reservedField[f.Name] {
+				return fmt.Errorf("types: type %q: field %q is reserved for node columns", name, f.Name)
+			}
+			if !nameRe.MatchString(f.Name) {
+				return fmt.Errorf("types: type %q: field %q: must match %s", name, f.Name, nameRe)
+			}
+			if seen[f.Name] {
+				return fmt.Errorf("types: type %q: duplicate field %q", name, f.Name)
+			}
+			seen[f.Name] = true
+			k, ok := t.kinds[f.Kind]
+			if !ok {
+				return fmt.Errorf("types: %q.%s: unknown kind %q", name, f.Name, f.Kind)
+			}
+			if err := k.ValidateField(t, name, f, defs); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// validateTitle 校验 title 声明: 本类型字段名（标量）或穿透路径
+// "ref.$.字段"（引用目标 JSON 标量）/ "ref.列"（引用目标节点列）。
+// 穿透第一段必须是本类型 ref 字段; 第二段跨类型校验（defs 全量在手）。
+func (t *Types) validateTitle(name string, td TypeDef, defs map[string]TypeDef) error {
+	// 统一路径语言解析（与 filter/expand 同一抽象）
+	path, err := ParsePath(td.Title)
+	if err != nil {
+		return fmt.Errorf("types: type %q: title: %w", name, err)
+	}
+	if len(path) == 1 {
+		// 本类型标量字段
+		if path[0].JSON || path[0].In {
+			return fmt.Errorf("types: type %q: title %q must be a plain field name (no $. or <-)", name, td.Title)
+		}
+		f, ok := FieldByName(td, path[0].Field)
+		if !ok {
+			return fmt.Errorf("types: type %q: title field %q not defined", name, td.Title)
+		}
+		k, ok := t.kinds[f.Kind]
+		if !ok || k.Class() != ClassField {
+			return fmt.Errorf("types: type %q: title field %q must be a scalar kind", name, td.Title)
+		}
+		return nil
+	}
+	// 穿透（两段）: 首段 = 引用字段
+	if len(path) > 2 {
+		return fmt.Errorf("types: type %q: title path %q: at most 2 segments (ref.field)", name, td.Title)
+	}
+	if path[0].JSON || path[0].In {
+		return fmt.Errorf("types: type %q: title path %q: first segment must be a ref field", name, td.Title)
+	}
+	f, ok := FieldByName(td, path[0].Field)
+	if !ok {
+		return fmt.Errorf("types: type %q: title path %q: ref field %q not defined", name, td.Title, path[0].Field)
+	}
+	k, ok := t.kinds[f.Kind]
+	if !ok || (k.Class() != ClassRef && k.Class() != ClassRefList) {
+		return fmt.Errorf("types: type %q: title path %q: first segment must be a ref field", name, td.Title)
+	}
+	target, ok := defs[f.To]
+	if !ok {
+		return fmt.Errorf("types: type %q: title path %q: target type %q not defined", name, td.Title, f.To)
+	}
+	seg2 := path[1]
+	if seg2.JSON {
+		tf, ok := FieldByName(target, seg2.Field)
+		if !ok {
+			return fmt.Errorf("types: type %q: title path %q: field %q not on type %q", name, td.Title, seg2.Field, f.To)
+		}
+		tk, ok := t.kinds[tf.Kind]
+		if !ok || tk.Class() != ClassField {
+			return fmt.Errorf("types: type %q: title path %q: target field %q must be a scalar kind", name, td.Title, seg2.Field)
+		}
+		return nil
+	}
+	if seg2.In || !nodeColumns[seg2.Field] {
+		return fmt.Errorf("types: type %q: title path %q: %q is neither $.field nor a node column", name, td.Title, seg2.Field)
+	}
+	return nil
+}
+
+// fieldByName 按名取字段。
+func FieldByName(td TypeDef, name string) (FieldDef, bool) {
+	for _, f := range td.Fields {
+		if f.Name == name {
+			return f, true
+		}
+	}
+	return FieldDef{}, false
+}
+
+// TitleField 该类型的标题字段（TypeDef.Title 声明）; 空 = 无标题映射。
+func (t *Types) TitleField(typeName string) string {
+	td, ok := t.defs[typeName]
+	if !ok {
+		return ""
+	}
+	return td.Title
+}
+
+// hasSelfRef 类型是否有自引用 ref 字段（to == 自身类型）。
+func hasSelfRef(td TypeDef) bool {
+	for _, f := range td.Fields {
+		if f.To == td.Name {
+			return true
+		}
+	}
+	return false
+}
+
+// IsTree 该类型是否树视图（view: tree 且校验通过）。
+func (t *Types) IsTree(typeName string) bool {
+	td, ok := t.defs[typeName]
+	return ok && td.View == "tree"
+}
+
+// IsRefKind 该 kind 是否引用系（ClassRef / ClassRefList）。
+// 未知 kind panic: Load 已保证字段 kind 存在, 未知即程序 bug（fail-loud,
+// 不静默 — 静默会让 ref 字段被当标量存进 fields, 数据损坏）。
+func (t *Types) IsRefKind(kind string) bool {
+	k, ok := t.kinds[kind]
+	if !ok {
+		panic(fmt.Sprintf("types: kind %q not registered", kind))
+	}
+	return k.Class() != ClassField
+}
+
+// ── 值校验 ─────────────────────────────────────────
+
+// ValidateValue 校验字段值（写入入口, fail-loud）。
+func (t *Types) ValidateValue(typeName string, f FieldDef, v any) error {
+	k, ok := t.kinds[f.Kind]
+	if !ok {
+		return fmt.Errorf("types: %q.%s: unknown kind %q", typeName, f.Name, f.Kind)
+	}
+	if err := k.Validate(v); err != nil {
+		return fmt.Errorf("types: %q.%s: %w", typeName, f.Name, err)
+	}
+	return nil
+}
+
+// ValidateFields 校验整组字段（类型定义已知的字段; 未知字段拒绝 — 防拼写错误）。
+func (t *Types) ValidateFields(typeName string, fields map[string]any) error {
+	td, ok := t.defs[typeName]
+	if !ok {
+		return fmt.Errorf("types: type %q not defined", typeName)
+	}
+	defs := map[string]FieldDef{}
+	for _, f := range td.Fields {
+		defs[f.Name] = f
+	}
+	for name, v := range fields {
+		f, ok := defs[name]
+		if !ok {
+			return fmt.Errorf("types: %q: unknown field %q", typeName, name)
+		}
+		if err := t.ValidateValue(typeName, f, v); err != nil {
+			return err
+		}
+	}
+	// required 检查（空值视为缺）
+	for _, f := range td.Fields {
+		if !f.Required {
+			continue
+		}
+		v, ok := fields[f.Name]
+		if !ok || t.isEmpty(f.Kind, v) {
+			return fmt.Errorf("types: %q: required field %q missing", typeName, f.Name)
+		}
+	}
+	return nil
+}
+
+func (t *Types) isEmpty(kind string, v any) bool {
+	k, ok := t.kinds[kind]
+	if !ok {
+		return true
+	}
+	return k.IsEmpty(v)
+}

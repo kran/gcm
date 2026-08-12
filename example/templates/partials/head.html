@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ if .Title }}{{ .Title }} · {{ end }}gcm 示例</title>
+<style>
+body { margin:0; font-family: system-ui, -apple-system, sans-serif; background:#f7f8fa; color:#1f2937; }
+.container { max-width: 900px; margin: 0 auto; padding: 0 20px; }
+header.site { background:#1e3a5f; color:#fff; padding: 14px 0; }
+header.site .container { display:flex; align-items:center; gap:24px; }
+header.site a { color:#cbd5e1; text-decoration:none; margin-right:16px; font-size:14px; }
+header.site a:hover { color:#fff; }
+main { padding: 24px 0 60px; min-height: 60vh; }
+.card { background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:16px 20px; margin-bottom:12px; }
+.card h3 { margin: 0 0 6px; font-size:16px; }
+.card .meta { color:#9ca3af; font-size:12px; }
+footer.site { background:#1e3a5f; color:#9ca3af; padding:20px 0; text-align:center; font-size:12px; }
+</style>
+</head>
+<body>
+<header class="site"><div class="container">
+  <a href="/" style="color:#fff;font-weight:700;">gcm 示例</a>
+  {{ $active := activeChain .Node }}
+  {{ range list "category" 1 1 50 }}
+  <a href="/node/{{ .Slug }}" class="{{ if has .ID $active }}active{{ end }}">{{ .Fields.name }}</a>
+  {{ end }}
+  <a href="/node/news" style="margin-left:auto;">关于</a>
+</div></header>

@@ -1,0 +1,41 @@
+# 示例站点类型定义: 内容↔专家↔任职 + 分类树（parent 引用）
+types:
+  category:
+    url: /category/{slug}
+    view: tree
+    title: name
+    icon: FolderOpened
+    fields:
+      - { name: name, kind: string, required: true, label: 名称 }
+      - { name: parent, kind: ref, to: category, transitive: true, }
+  article:
+    url: /article/{slug}
+    search: true
+    title: title
+    icon: Document
+    fields:
+      - { name: title, kind: string, required: true, label: 标题 }
+      - { name: body, kind: richtext, required: true, label: 正文 }
+      - { name: cover, kind: image, label: 封面 }
+      - { name: authors, kind: "ref[]", to: person, label: 作者 }
+      - { name: categories, kind: "ref[]", to: category, label: 分类 }
+  person:
+    url: /person/{slug}
+    title: name
+    icon: User
+    fields:
+      - { name: name, kind: string, required: true, label: 姓名 }
+      - { name: bio, kind: text, label: 简介 }
+      - { name: articles, kind: "ref[]", to: article, label: 文章 }
+      - { name: employment, kind: "ref[]", to: employment, label: 任职 }
+  org:
+    title: name
+    fields:
+      - { name: name, kind: string, required: true }
+  employment:
+    title: person.$.name
+    fields:
+      - { name: person, kind: ref, to: person, required: true }
+      - { name: org, kind: ref, to: org, required: true }
+      - { name: role, kind: string }
+      - { name: tenure, kind: string }

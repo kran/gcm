@@ -1,0 +1,23 @@
+{{ partial "partials/head.html" (merge (dict "Title" "首页") .) }}
+<main><div class="container">
+  <h2 style="font-size:20px;">最新文章</h2>
+  {{ range .Latest }}
+  <div class="card">
+    <h3><a href="{{ if .Slug }}/node/{{ .Slug }}{{ else }}/node/{{ .ID }}{{ end }}" style="color:#1e3a5f;">{{ .Fields.title }}</a></h3>
+    <div class="meta">作者: {{ range outRefs .ID "authors" 1 10 }}{{ .Fields.name }} {{ end }}· {{ datefmt .CreatedAt "2006-01-02" }}</div>
+  </div>
+  {{ else }}<p style="color:#9ca3af;">暂无内容</p>{{ end }}
+  <h2 style="font-size:20px;margin-top:32px;">热门文章（filterList + expand）</h2>
+  {{/* 筛选: 已发布且属于 current 分类（seed 里 id=2 有文章; 真实站点从上下文取值） */}}
+  {{ $hot := filterList "article" "status = 1 && categories ~ {:c}" (dict "c" 2) 1 5 }}
+  {{ $hot = $hot | expand "authors, categories" }}
+  {{ range $hot }}
+  <div class="card">
+    <h3><a href="/node/{{ .Slug }}" style="color:#1e3a5f;">{{ .Fields.title }}</a></h3>
+    <div class="meta">作者: {{ range .Expand.authors }}{{ .Fields.name }} {{ end }}·
+      分类: {{ range .Expand.categories }}<a href="/node/{{ .Slug }}">{{ .Fields.name }}</a> {{ end }}·
+      {{ datefmt .CreatedAt "2006-01-02" }}</div>
+  </div>
+  {{ else }}<p style="color:#9ca3af;">暂无内容</p>{{ end }}
+</div></main>
+{{ partial "partials/footer.html" . }}
