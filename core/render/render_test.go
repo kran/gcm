@@ -205,3 +205,46 @@ func TestFilterListFailLoud(t *testing.T) {
 		t.Fatalf("error must surface filter cause: %v", err)
 	}
 }
+
+// tpl 机制（并入 render 包）: 片段组合 / 兜底 / safeHTML / plainText / sprig。
+func TestTplMechanisms(t *testing.T) {
+	svc, dir := testSvc(t)
+	tplDir := filepath.Join(dir, "templates")
+	os.MkdirAll(filepath.Join(tplDir, "partials"), 0755)
+	os.WriteFile(filepath.Join(tplDir, "partials/head.html"),
+		[]byte(`<title>{{ .Title }}</title>`), 0644)
+	os.WriteFile(filepath.Join(tplDir, "partials/footer.html"),
+		[]byte(`<footer>{{ .Year }}</footer>`), 0644)
+	os.WriteFile(filepath.Join(tplDir, "node.html"), []byte(
+		`{{ partial "partials/head.html" (dict "Title" "页") }}`+
+			`{{ partialOr "partials/missing.html" "partials/footer.html" (dict "Year" 2026) }}`+
+			`{{ safeHTML "<b>粗</b>" }}`+
+			`[{{ plainText "<p>段一</p><p>段二</p>" }}]`+
+			`{{ default "d" "" }}`), 0644)
+	e := New(tplDir, svc)
+	var sb strings.Builder
+	if err := e.Render(&sb, []string{"node.html"}, map[string]any{}); err != nil {
+		t.Fatal(err)
+	}
+	out := sb.String()
+	for _, want := range []string{"<title>页</title>", "<footer>2026</footer>", "<b>粗</b>", "段一", "段二", "d"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("tpl mechanisms: missing %q in %s", want, out)
+		}
+	}
+}
+
+// partialOr 兜底只对"片段缺失"; 片段解析/执行错误响亮上抛。
+func TestPartialOrErrorNotSwallowed(t *testing.T) {
+	svc, dir := testSvc(t)
+	tplDir := filepath.Join(dir, "templates")
+	os.MkdirAll(tplDir, 0755)
+	os.WriteFile(filepath.Join(tplDir, "bad.html"), []byte(`{{ index .Missing 5 }}`), 0644)
+	os.WriteFile(filepath.Join(tplDir, "node.html"), []byte(
+		`{{ partialOr "bad.html" "fallback.html" . }}`), 0644)
+	e := New(tplDir, svc)
+	var sb strings.Builder
+	if err := e.Render(&sb, []string{"node.html"}, map[string]any{}); err == nil {
+		t.Fatal("partial execute error must not fall back silently")
+	}
+}

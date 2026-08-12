@@ -1,4 +1,4 @@
-// Package render 站点渲染引擎 — tpl 引擎 + 查询函数注入。
+// Package render 站点渲染引擎 — 模板引擎（级联/片段/sprig）+ 查询函数注入。
 //
 // 查询函数定义在 Go 层（引擎原语 + dba）, 注入 funcMap 后模板一行调用:
 //
@@ -6,41 +6,62 @@
 //
 // 模板作者不写 SQL。查询错误 fail-loud: panic 传播为渲染错误
 // （html/template 捕获 panic 作为 Execute 错误, 渲染层统一处理）。
+//
+// 无缓存设计: 每次渲染读文件+解析, 天然热重载（改文件下一请求生效）;
+// 解析失败每次请求响亮 500（失败响亮）。
 package render
 
 import (
 	"fmt"
 	"html/template"
 	"io"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/kran/gcm/core"
-	"github.com/kran/gcm/core/tpl"
 )
 
-// Engine 站点渲染引擎: 持有 tpl 引擎 + 核心服务（查询注入源）。
+// Engine 渲染引擎: 模板根目录 + 函数表 + 核心服务（查询注入源）。
 type Engine struct {
-	tpl     *tpl.Engine
+	mu      sync.RWMutex
+	root    string
+	funcs   template.FuncMap // 自定义函数（查询函数 + 站点业务函数）
 	core    *core.Service
 	filters sync.Map // filter 表达式 → *core.CompiledFilter（渲染期编译缓存）
 }
 
 // New 建渲染引擎。root 是模板目录; svc 提供查询函数。
 func New(root string, svc *core.Service) *Engine {
-	e := &Engine{core: svc}
-	e.tpl = tpl.New(root, e.funcMap())
+	e := &Engine{root: root, core: svc, funcs: template.FuncMap{}}
+	for k, v := range e.queryFuncs() {
+		e.funcs[k] = v
+	}
 	return e
 }
 
 // Func 注册自定义模板函数（站点项目扩展, 如业务查询）。
 func (e *Engine) Func(name string, fn any) {
-	e.tpl.Func(name, fn)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.funcs[name] = fn
 }
 
 // Render 按候选序取第一个存在的模板执行（级联: node--{type}.html → node.html）。
 func (e *Engine) Render(w io.Writer, candidates []string, data any) error {
-	return e.tpl.Render(w, candidates, data)
+	for _, name := range candidates {
+		full := filepath.Join(e.root, name)
+		if _, err := os.Stat(full); err != nil {
+			continue
+		}
+		if err := e.execute(w, name, full, data); err != nil {
+			return err
+		}
+		return nil
+	}
+	return fmt.Errorf("render: no template for %q (candidates: %s)", e.root, strings.Join(candidates, ", "))
 }
 
 // Candidates 节点级联候选名: node--{type}.html → node.html。
@@ -59,9 +80,10 @@ func fail(err error) {
 	}
 }
 
-// funcMap 注入: 查询原语（Go 层实现）+ 展示工具。
-// 返回 1 值 — 模板一行调用; 错误走 panic。
-func (e *Engine) funcMap() template.FuncMap {
+// queryFuncs 查询原语（Go 层实现）+ 展示工具。
+// 返回 1 值 — 模板一行调用; 错误走 panic。模板执行时经 funcMap()
+// （tpl.go）合并 sprig + 内置函数后整体注入。
+func (e *Engine) queryFuncs() template.FuncMap {
 	svc := e.core
 	return template.FuncMap{
 		// ── 查询原语 ─────────────────────────
