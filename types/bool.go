@@ -18,4 +18,4 @@ func (boolKind) ValidateField(t *Types, typeName string, f FieldDef, defs map[st
 	return rejectRefAttrs(typeName, f)
 }
 func (boolKind) Class() Class   { return ClassField }
-func (boolKind) Editor() string { return "bool" }
+func (boolKind) Editor() Widget { return WidgetSwitch }

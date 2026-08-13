@@ -192,7 +192,7 @@ func (dateKind) Validate(v any) error {
 }
 func (dateKind) IsEmpty(v any) bool { s, ok := v.(string); return !ok || s == "" }
 func (dateKind) Class() Class       { return ClassField }
-func (dateKind) Editor() string     { return "text" } // 复用单行输入控件 — 自定义 kind 后台可编辑
+func (dateKind) Editor() Widget     { return WidgetInput } // 复用现有原语 — 自定义 kind 后台可编辑
 func (dateKind) ValidateField(t *Types, typeName string, f FieldDef, defs map[string]TypeDef) error {
 	return rejectRefAttrs(typeName, f)
 }

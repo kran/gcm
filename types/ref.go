@@ -16,4 +16,4 @@ func (refKind) ValidateField(t *Types, typeName string, f FieldDef, defs map[str
 	return validateRefField(t, typeName, f, defs)
 }
 func (refKind) Class() Class   { return ClassRef }
-func (refKind) Editor() string { return "ref" }
+func (refKind) Editor() Widget { return WidgetEntityPicker }

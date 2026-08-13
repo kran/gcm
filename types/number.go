@@ -18,4 +18,4 @@ func (numberKind) ValidateField(t *Types, typeName string, f FieldDef, defs map[
 	return rejectRefAttrs(typeName, f)
 }
 func (numberKind) Class() Class   { return ClassField }
-func (numberKind) Editor() string { return "number" }
+func (numberKind) Editor() Widget { return WidgetNumber }

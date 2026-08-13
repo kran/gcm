@@ -90,8 +90,13 @@
                         @update:model-value="set(f.name, $event)" />
                 </div>
 
-                <!-- 未知 kind → 文本兜底 -->
-                <el-input v-else :model-value="get(f.name)" @update:model-value="set(f.name, $event)" />
+                <!-- 站点扩展控件: /admin/ui-extras/{editor}.vue 动态加载（cmx 面板模式） -->
+                <div v-else-if="extraWidgets[f.editor] === false" class="fr-unknown">
+                    ⚠ 未知控件类型 &quot;{{ f.editor }}&quot;（站点未挂载对应组件）
+                </div>
+                <component v-else :is="extraWidgets[f.editor]" :model-value="get(f.name)"
+                    @update:model-value="set(f.name, $event)" />
+
             </div>
         </template>
     </div>
@@ -114,7 +119,11 @@ export default {
     },
     emits: ['update:modelValue'],
     data() {
-        return { refOptions: {}, refLoading: {} }
+        return { refOptions: {}, refLoading: {}, extraWidgets: {} }
+    },
+    mounted() { this.resolveExtraWidgets() },
+    watch: {
+        fields: { deep: true, handler() { this.resolveExtraWidgets() } },
     },
     computed: {
         // 合并: preset（编辑回显已选值）+ options（搜索新值, 覆盖 preset 同 id）
@@ -123,6 +132,28 @@ export default {
         },
     },
     methods: {
+        // 内置控件原语集合（其余 editor → 站点扩展组件动态加载）
+        builtinWidgets() {
+            return ['text', 'textarea', 'richtext', 'number', 'bool',
+                'upload-image', 'upload-file', 'ref', 'ref[]', 'array', 'object']
+        },
+        resolveExtraWidgets() {
+            const builtin = this.builtinWidgets()
+            ;(this.fields || []).forEach(f => {
+                if (f.editor && builtin.indexOf(f.editor) < 0 && this.extraWidgets[f.editor] === undefined) {
+                    this.resolveWidget(f.editor)
+                }
+            })
+        },
+        async resolveWidget(name) {
+            this.extraWidgets[name] = null
+            try {
+                const comp = await Panel.loadComponent('/admin/ui-extras/' + name + '.vue')
+                this.extraWidgets[name] = comp || false
+            } catch (_) {
+                this.extraWidgets[name] = false // 加载失败 → 模板显示警告块（fail-loud）
+            }
+        },
         get(name) { return this.modelValue ? this.modelValue[name] : undefined },
         set(name, v) {
             this.$emit('update:modelValue', { ...(this.modelValue || {}), [name]: v })

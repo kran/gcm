@@ -6,20 +6,51 @@
 package main
 
 import (
+	"embed"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/kran/gcm"
 	"github.com/kran/gcm/core"
 	"github.com/kran/gcm/core/render"
+	"github.com/kran/gcm/types"
 	"github.com/kran/gcm/web"
 )
 
 // adminPass 固定管理密码（测试方便）; 空 = 随机生成打印一次。
 var adminPass = flag.String("admin-pass", "cmx12345", "固定后台密码 (空 = 随机生成)")
+
+//go:embed ui-extras
+var uiExtras embed.FS // 站点扩展控件（admin 字段控件原语, 运行时编译）
+
+// colorKind 站点自定义 kind: 十六进制颜色（#RRGGBB）— 完整扩展闭环演示:
+// Go 一个文件（值校验 + 编辑原语声明）+ .vue 组件（ui-extras embed + 路由输出）,
+// 前端 FieldRenderer 遇未知原语自动加载 — 两处两语言但各自独立可扩展。
+type colorKind struct{}
+
+func (colorKind) Name() string         { return "color" }
+func (colorKind) Class() types.Class   { return types.ClassField }
+func (colorKind) Editor() types.Widget { return "color" } // 新原语名（前端动态加载）
+func (colorKind) IsEmpty(v any) bool   { s, _ := v.(string); return s == "" }
+func (colorKind) Validate(v any) error {
+	s, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("expects #RRGGBB string, got %T", v)
+	}
+	if !regexp.MustCompile(`^#[0-9a-fA-F]{6}$`).MatchString(s) {
+		return fmt.Errorf("invalid color %q (want #RRGGBB)", s)
+	}
+	return nil
+}
+func (colorKind) ValidateField(t *types.Types, typeName string, f types.FieldDef, defs map[string]types.TypeDef) error {
+	return nil
+}
 
 func main() {
 	flag.Parse()
@@ -35,6 +66,7 @@ func main() {
 		Templates: "templates",
 		Static:    "static",
 		Uploads:   "uploads",
+		Kinds:     []types.Kind{colorKind{}},
 		Setup:     setup,
 	})
 	if err != nil {
@@ -48,6 +80,18 @@ func setup(site *web.Site, svc *core.Service) error {
 	if err := seed(svc); err != nil {
 		return err
 	}
+	// 站点扩展: 挂载控件组件路由（/admin/ui-extras/*.vue — color kind 的
+	// 编辑原语; kind 注册在 SiteSpec.Kinds, Load 前生效）
+	site.Get("/admin/ui-extras/*", func(ctx *web.CmsCtx) {
+		name := strings.TrimPrefix(ctx.R.URL.Path, "/admin/ui-extras/")
+		data, err := uiExtras.ReadFile("ui-extras/" + name)
+		if err != nil {
+			ctx.Error(http.StatusNotFound, "widget not found")
+			return
+		}
+		ctx.SetHeader("Content-Type", "text/javascript; charset=utf-8")
+		_, _ = ctx.W.Write(data)
+	})
 	// 站点配置（运营后台可改页脚/版权）
 	if err := svc.SetSetting(core.Setting{Key: "footer", Group: "site", Kind: "richtext",
 		Note: "页脚内容", Value: "gcm 示例站点 — 实体-关系 CMS"}); err != nil {

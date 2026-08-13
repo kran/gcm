@@ -41,7 +41,7 @@ type FieldDef struct {
 	Label  string `yaml:"label" json:"label"` // 显示名（表单/列表）; 空 = 回退字段名
 	Kind   string `yaml:"kind" json:"kind"`
 	To     string `yaml:"to" json:"to"`    // ref/ref[]: 目标类型名
-	Editor string `yaml:"-" json:"editor"` // 编辑形态（kind.Editor(), Load 时填充 — 前端按此渲染）
+	Editor Widget `yaml:"-" json:"editor"` // 编辑形态（kind.Editor(), Load 时填充 — 前端按此渲染）
 	// 复合字段（结构语法, 非值类型 — 不进 kinds 注册表）:
 	Item        *FieldDef  `yaml:"item,omitempty" json:"item,omitempty"`     // kind=array: 元素定义（递归）
 	Fields      []FieldDef `yaml:"fields,omitempty" json:"fields,omitempty"` // kind=object: 子字段（递归）
@@ -126,7 +126,7 @@ func (t *Types) Load(raw []byte) error {
 		td := cfg.Types[name]
 		for i, f := range td.Fields {
 			if f.Kind == "array" || f.Kind == "object" {
-				td.Fields[i].Editor = f.Kind
+				td.Fields[i].Editor = Widget(f.Kind)
 				continue
 			}
 			if k, ok := t.kinds[f.Kind]; ok {

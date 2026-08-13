@@ -17,6 +17,7 @@ types:
       - { name: title, kind: string, required: true, label: 标题 }
       - { name: body, kind: richtext, required: true, label: 正文 }
       - { name: cover, kind: image, label: 封面 }
+      - { name: accent, kind: color, label: 强调色 }
       - { name: authors, kind: "ref[]", to: person, label: 作者 }
       - { name: categories, kind: "ref[]", to: category, label: 分类 }
   person:

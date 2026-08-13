@@ -47,6 +47,9 @@ type Service struct {
 // Hooks 站点级 hook 总线（注册扩展; 执行顺序 = priority 升序 + 注册序稳定）。
 func (s *Service) Hooks() *hook.Bus { return s.hooks }
 
+// Types 类型系统容器（站点注册自定义 kind）。
+func (s *Service) Types() *types.Types { return s.types }
+
 // New 建引擎。
 func New(db *dba.SQL, ts *types.Types) *Service {
 	svc := &Service{db: db, dao: dba.NewDao[Node](db, "nodes"), types: ts}

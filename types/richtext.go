@@ -19,7 +19,7 @@ func (richtextKind) IsEmpty(v any) bool {
 	return !ok || strings.TrimSpace(s) == ""
 }
 func (richtextKind) Class() Class   { return ClassField }
-func (richtextKind) Editor() string { return "richtext" }
+func (richtextKind) Editor() Widget { return WidgetRichtext }
 
 func (richtextKind) ValidateField(t *Types, typeName string, f FieldDef, defs map[string]TypeDef) error {
 	return rejectRefAttrs(typeName, f)

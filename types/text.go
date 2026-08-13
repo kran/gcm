@@ -19,7 +19,7 @@ func (textKind) IsEmpty(v any) bool {
 	return !ok || strings.TrimSpace(s) == ""
 }
 func (textKind) Class() Class   { return ClassField }
-func (textKind) Editor() string { return "textarea" }
+func (textKind) Editor() Widget { return WidgetTextarea }
 
 func (textKind) ValidateField(t *Types, typeName string, f FieldDef, defs map[string]TypeDef) error {
 	return rejectRefAttrs(typeName, f)

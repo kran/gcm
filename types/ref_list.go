@@ -23,7 +23,7 @@ func (refListKind) IsEmpty(v any) bool {
 	return !ok || len(arr) == 0
 }
 func (refListKind) Class() Class   { return ClassRefList }
-func (refListKind) Editor() string { return "ref[]" }
+func (refListKind) Editor() Widget { return WidgetEntityList }
 
 func (refListKind) ValidateField(t *Types, typeName string, f FieldDef, defs map[string]TypeDef) error {
 	return validateRefField(t, typeName, f, defs)

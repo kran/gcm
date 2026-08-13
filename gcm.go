@@ -34,12 +34,16 @@ import (
 
 // SiteSpec 站点装配规格: 骨架配置 + 业务钩子。
 type SiteSpec struct {
-	Hosts     []string // 域名列表（Host 头分发键; 多站时必须非空, 单站可空）
-	DBPath    string   // SQLite 库文件路径
-	Types     []byte   // types.yaml 内容（类型定义, 站点差异所在）
-	Templates string   // 模板目录（node--{type}.html 级联根）
-	Static    string   // 静态资源目录（可空 = 不挂 /static）
-	Uploads   string   // 上传目录（可空 = 不上传; admin.Mount 时挂 /uploads）
+	Hosts  []string // 域名列表（Host 头分发键; 多站时必须非空, 单站可空）
+	DBPath string   // SQLite 库文件路径
+	Types  []byte   // types.yaml 内容（类型定义, 站点差异所在）
+	// Kinds 站点自定义 kind（在 types.Load 之前注册 — 类型定义里用到
+	// 自定义 kind 才能通过校验）。完整扩展闭环: Go 值校验 + Editor 原语
+	// 声明 + 站点挂载控件组件路由（/admin/ui-extras/{widget}.vue）。
+	Kinds     []types.Kind
+	Templates string // 模板目录（node--{type}.html 级联根）
+	Static    string // 静态资源目录（可空 = 不挂 /static）
+	Uploads   string // 上传目录（可空 = 不上传; admin.Mount 时挂 /uploads）
 	// Setup 站点业务装配: 自定义路由 / 模板函数 / seed。装配后调用;
 	// 返回 error = 装配失败（fail-loud）。
 	Setup func(s *web.Site, svc *core.Service) error
@@ -103,6 +107,9 @@ func (a *App) build(spec SiteSpec) (*web.Site, error) {
 		}
 	}
 	ts := types.New()
+	for _, k := range spec.Kinds {
+		ts.RegisterKind(k)
+	}
 	if len(spec.Types) > 0 {
 		if err := ts.Load(spec.Types); err != nil {
 			return nil, fmt.Errorf("types: %w", err)
