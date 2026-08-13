@@ -82,6 +82,9 @@ func (s *Service) Create(n *Node) (int64, error) {
 	if err := s.types.ValidateFields(n.Type, n.Fields); err != nil {
 		return 0, err
 	}
+	if n.Slug != "" && !types.ValidSlug(n.Slug) {
+		return 0, fmt.Errorf("core: invalid slug %q (must start with letter, only letters/digits/_/-, no consecutive --)", n.Slug)
+	}
 	n.Title = s.titleFrom(td, n.Fields)
 	scalar, refs, err := s.splitFields(td, n.Fields)
 	if err != nil {
@@ -145,6 +148,9 @@ func (s *Service) Update(n *Node) error {
 	}
 	if err := s.types.ValidateFields(existing.Type, n.Fields); err != nil {
 		return err
+	}
+	if n.Slug != "" && !types.ValidSlug(n.Slug) {
+		return fmt.Errorf("core: invalid slug %q (must start with letter, only letters/digits/_/-, no consecutive --)", n.Slug)
 	}
 	// 内部拷贝: 不触碰调用方传入的 Node（无隐蔽副作用）。
 	m := *n

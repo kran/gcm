@@ -418,3 +418,23 @@ func TestHookAbortRollsBack(t *testing.T) {
 		t.Fatal("node must not persist when hook fails")
 	}
 }
+
+// slug 写入期约束: 非法 slug 拒绝（fail-loud）。
+func TestSlugConstraint(t *testing.T) {
+	s := newFilterSvc(t)
+	if _, err := s.Create(&Node{Type: "article", Slug: "a--b", Fields: Fields{"title": "x"}}); err == nil {
+		t.Fatal("slug a--b must be rejected")
+	}
+	if _, err := s.Create(&Node{Type: "article", Slug: "1abc", Fields: Fields{"title": "x"}}); err == nil {
+		t.Fatal("slug starting with digit must be rejected")
+	}
+	id, err := s.Create(&Node{Type: "article", Slug: "good-slug", Fields: Fields{"title": "x"}})
+	if err != nil {
+		t.Fatalf("valid slug: %v", err)
+	}
+	n, _ := s.Get(id)
+	n.Slug = "bad--slug"
+	if err := s.Update(n); err == nil {
+		t.Fatal("update with bad slug must be rejected")
+	}
+}

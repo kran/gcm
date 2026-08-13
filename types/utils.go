@@ -68,3 +68,31 @@ func ToID(v any) (int64, error) {
 		return 0, fmt.Errorf("expects node id (int64), got %T", v)
 	}
 }
+
+// ValidSlug slug 约束: 字母开头; 仅字母/数字/_/-; 禁止连续 "--"。
+// 空串返回 false（空 slug 合法由调用方判断 — 空 = 无 URL 段）。
+func ValidSlug(s string) bool {
+	if s == "" {
+		return false
+	}
+	c := s[0]
+	if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z') {
+		return false
+	}
+	prevDash := false
+	for i := 1; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_':
+			prevDash = false
+		case c == '-':
+			if prevDash {
+				return false // 连续 --
+			}
+			prevDash = true
+		default:
+			return false
+		}
+	}
+	return true
+}

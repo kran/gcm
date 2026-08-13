@@ -341,3 +341,19 @@ types:
 		}
 	}
 }
+
+// slug 约束: 字母开头 / 白名单字符 / 禁止连续 --。
+func TestValidSlug(t *testing.T) {
+	valid := []string{"ai", "ai-industry", "page1", "a_b", "a-1-b", "A-B"}
+	invalid := []string{"", "1abc", "-abc", "_abc", "a--b", "a b", "a/b", "a..b", "a--", "-"}
+	for _, s := range valid {
+		if !ValidSlug(s) {
+			t.Fatalf("valid slug %q rejected", s)
+		}
+	}
+	for _, s := range invalid {
+		if ValidSlug(s) {
+			t.Fatalf("invalid slug %q accepted", s)
+		}
+	}
+}

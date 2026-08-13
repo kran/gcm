@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/kran/gcm/core"
+	"github.com/kran/gcm/types"
 )
 
 // Engine 渲染引擎: 模板根目录 + 函数表 + 核心服务（查询注入源）。
@@ -78,19 +79,8 @@ func Candidates(n *core.Node) []string {
 	return []string{"node.html"}
 }
 
-// safeSlug slug 是否 URL/文件名安全（字母/数字/-/_）。
-func safeSlug(s string) bool {
-	if s == "" {
-		return false
-	}
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_') {
-			return false
-		}
-	}
-	return true
-}
+// safeSlug slug 是否 URL/文件名安全 — 与写入期约束统一（types.ValidSlug）。
+func safeSlug(s string) bool { return types.ValidSlug(s) }
 
 // fail 查询错误 → panic（html/template 捕获为 Execute 错误, fail-loud）。
 func fail(err error) {
