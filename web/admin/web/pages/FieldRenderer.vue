@@ -143,7 +143,7 @@ export default {
         resolveExtraWidgets() {
             const builtin = this.builtinWidgets()
             ;(this.fields || []).forEach(f => {
-                if (f.editor && builtin.indexOf(f.editor) < 0 && this.extraWidgets[widgetOf(f)] === undefined) {
+                if (this.widgetOf(f) && builtin.indexOf(this.widgetOf(f)) < 0 && this.extraWidgets[this.widgetOf(f)] === undefined) {
                     this.resolveWidget(this.widgetOf(f))
                 }
             })
