@@ -303,30 +303,6 @@ func (s *Service) refTargetIDs(id int64, field string) ([]int64, error) {
 	return ids, nil
 }
 
-// ListFiltered 类型 + 条件片段（filter 编译产物, 占位符从 #{1} 起）+ 分页。
-// 链式 Add（每段独立计数）: type 段 / 条件段 / 分页段; 排序与 List 一致。
-func (s *Service) ListFiltered(typeName string, where string, args []any, page, size int) ([]Node, int64, error) {
-	if page < 1 {
-		page = 1
-	}
-	if size < 1 {
-		size = 20
-	}
-	var total int64
-	if _, err := s.db.Add(`SELECT COUNT(1) FROM nodes WHERE type = #{1}`, typeName).
-		AddIf(where != "", `AND `+where, args...).Get(&total); err != nil {
-		return nil, 0, err
-	}
-	var list []Node
-	if err := s.db.Add(`SELECT * FROM nodes WHERE type = #{1}`, typeName).
-		AddIf(where != "", `AND `+where, args...).
-		Add(`ORDER BY sort, id DESC LIMIT #{1} OFFSET #{2}`, size, (page-1)*size).
-		List(&list); err != nil {
-		return nil, 0, err
-	}
-	return list, total, nil
-}
-
 // GetBySlug 按 slug 取节点; 不存在返回 (nil, nil)。
 // 空 slug 永不命中（部分唯一索引: 空 slug 不进索引）。
 func (s *Service) GetBySlug(slug string) (*Node, error) {
