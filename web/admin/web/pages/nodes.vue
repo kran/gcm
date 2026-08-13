@@ -206,6 +206,7 @@ export default {
         selectType(t) {
             this.query.type = t
             this.query.page = 1
+            this.query.filter = '' // 类型切换清残留（旧类型的字段对不上新类型, fail-loud 报错）
             const def = this.typeDefs[t] || {}
             this.treeMode = def.view === 'tree'
             this.setupFilterTree(def)
