@@ -23,9 +23,25 @@ import (
 	"github.com/kran/gcm/core/render"
 )
 
-// CmsCtx 请求上下文。
+// CmsCtx 请求上下文（富上下文: 携带站点引用, 自定义路由一行拿引擎 —
+// 不再闭包捕获 site/svc/eng 三件套）。
 type CmsCtx struct {
 	*cho.BaseContext
+	site *Site
+}
+
+// Svc 核心服务（自定义路由查数据）。
+func (c *CmsCtx) Svc() *core.Service { return c.site.svc }
+
+// Engine 渲染引擎（注册模板函数用）。
+func (c *CmsCtx) Engine() *render.Engine { return c.site.eng }
+
+// DB 底层数据库（业务表/逃生舱）。
+func (c *CmsCtx) DB() *dba.SQL { return c.site.db }
+
+// Render 站点渲染出口: 候选级联 + 渲染错误 → HTML 注释（fail-loud 可见）。
+func (c *CmsCtx) Render(candidates []string, data map[string]any) {
+	c.site.renderHTML(c, candidates, data)
 }
 
 // Site 站点装配: cho 路由 + 核心服务 + 渲染引擎 + 静态目录。
@@ -46,16 +62,25 @@ func (s *Site) Func(name string, fn any) { s.eng.Func(name, fn) }
 // New 建站点。static 是静态资源目录（可为空串 = 不挂静态路由）。
 func New(svc *core.Service, eng *render.Engine, static string) *Site {
 	s := &Site{
-		Cho: cho.New(func(w http.ResponseWriter, r *http.Request) *CmsCtx {
-			return &CmsCtx{BaseContext: cho.MakeBaseContext(w, r)}
-		}),
 		db:     svc.DB(),
 		svc:    svc,
 		eng:    eng,
 		static: static,
 	}
+	s.Cho = cho.New(func(w http.ResponseWriter, r *http.Request) *CmsCtx {
+		return &CmsCtx{BaseContext: cho.MakeBaseContext(w, r), site: s}
+	})
 	s.mount()
 	return s
+}
+
+// MountUploads 挂载 /uploads/* 上传文件服务（admin 上传落盘目录）。
+func (s *Site) MountUploads(dir string) {
+	if dir == "" {
+		return
+	}
+	fs := http.StripPrefix("/uploads", http.FileServer(http.Dir(dir)))
+	s.Get("/uploads/*", func(ctx *CmsCtx) { fs.ServeHTTP(ctx.W, ctx.R) })
 }
 
 // mount 挂载前台路由。

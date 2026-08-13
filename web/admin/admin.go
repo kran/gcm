@@ -124,6 +124,9 @@ func (b *backend) upload(ctx *web.CmsCtx) {
 // uploadDir 是上传目录（可为空 = 禁用上传）。
 func Mount(s *web.Site, svc *core.Service, ts *types.Types, uploadDir string) {
 	b := &backend{svc: NewService(s.DB()), core: svc, ts: ts, uploadDir: uploadDir}
+	// 上传目录 → /uploads/* 公开访问（白名单扩展名在写入时已把关）
+	s.MountUploads(uploadDir)
+
 	// /admin 组: 公开 login/logout/ui/upload, 其余登录保护
 	s.Group("/admin", func(g *cho.Cho[*web.CmsCtx]) {
 		g.Post("/login", b.login)

@@ -271,15 +271,9 @@ func subtreeIDs(svc *core.Service, root int64) ([]int64, error) {
 	return append([]int64{root}, ids...), nil
 }
 
-// renderHTML 站点级渲染出口（错误 → HTML 注释）。
+// renderHTML 站点级渲染出口（CmsCtx.Render 的别名 — 站点保持旧调用名）。
 func renderHTML(ctx *web.CmsCtx, site *web.Site, eng *render.Engine, candidates []string, data map[string]any) {
-	// 复用 web 包的渲染出口不可行（未导出）— 站点项目自己处理
-	// （此处直接调用引擎, 失败输出注释, 与 web 包行为一致）
-	if err := eng.Render(ctx.W, candidates, data); err != nil {
-		log.Printf("render failed: %s: %v", ctx.R.URL.Path, err)
-		ctx.W.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = ctx.W.Write([]byte("<!-- render error: " + err.Error() + " -->"))
-	}
+	ctx.Render(candidates, data)
 }
 
 var _ = strconv.Itoa // 占位（后续分页用）
