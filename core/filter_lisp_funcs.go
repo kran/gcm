@@ -182,17 +182,26 @@ func (ctx *LispCtx) through(args []lispExpr) (string, []any, error) {
 }
 
 // throughRec 递归编译穿透: 每段一层 EXISTS, 别名唯一（e{i}/t{i}）。
-// 段方向: "<-" 前缀 = 入边（与引用操作符统一符号; JOIN 按 from_node, link 反向）;
-// 无标记 = 出边。
+// 段方向全显式: "->" 前缀 = 出边, "<-" 前缀 = 入边 — 无默认（每一跳方向
+// 在表达式可见）; JOIN 按方向选 to_node/from_node + link 反向。
 func (ctx *LispCtx) throughRec(segs []lispExpr, val any, i int, link string) (string, []any, error) {
 	var err error
 	segName, _ := pathOf(segs[i])
-	in := strings.HasPrefix(segName, "<-")
-	segName = strings.TrimPrefix(segName, "<-")
+	in := false
+	switch {
+	case strings.HasPrefix(segName, "<-"):
+		in = true
+		segName = strings.TrimPrefix(segName, "<-")
+	case strings.HasPrefix(segName, "->"):
+		segName = strings.TrimPrefix(segName, "->")
+	default:
+		return "", nil, fmt.Errorf("filter-lisp: through segment %q must have direction (-> or <-)", segName)
+	}
 	// 当前层宿主类型: 段0 = ctx.td; 更深层 = 前段的 ref 目标
 	if i > 0 {
 		prev, _ := pathOf(segs[i-1])
 		prev = strings.TrimPrefix(prev, "<-")
+		prev = strings.TrimPrefix(prev, "->")
 		to, err := ctx.refTargetType(prev)
 		if err != nil {
 			return "", nil, err

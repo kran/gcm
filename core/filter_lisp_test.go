@@ -54,8 +54,8 @@ func TestLispFilter(t *testing.T) {
 	}
 	// 5. 多层穿透（get 路径）
 	//    文章 → categories(子) → parent(根) 的 name = "根"
-	//    (get categories parent $.name "根") — 3 段路径
-	if n := lq(`(get categories parent $.name "根")`, nil); n != 1 {
+	//    (get ->categories ->parent $.name "根") — 3 段路径
+	if n := lq(`(get ->categories ->parent $.name "根")`, nil); n != 1 {
 		t.Fatalf("get 3-level: %d", n)
 	}
 }
@@ -111,10 +111,10 @@ func TestLispThroughDirection(t *testing.T) {
 	art, _ := s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "甲", "categories": []any{child}}})
 	b, _ := s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "乙", "categories": []any{root}}})
 
-	// (get categories <-parent $.name "子"): 文章→分类(出边), ^parent(入边)=
+	// (get ->categories <-parent $.name "子"): 文章→分类(出边), ^parent(入边)=
 	// 谁把该分类当父。乙挂 root → root 的 <-parent 入边 = child（child.parent=root）
 	// → child.name="子" ✓ 乙命中; 甲挂 child → child 的 <-parent 入边 = 无 ✗
-	where, args, err := s.CompileLisp(`(get categories <-parent $.name "子")`, "article", nil)
+	where, args, err := s.CompileLisp(`(get ->categories <-parent $.name "子")`, "article", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
