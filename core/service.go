@@ -104,17 +104,9 @@ func (s *Service) Create(n *Node) (int64, error) {
 		if err := s.addRefs(tx, id, td, refs); err != nil {
 			return err
 		}
-		// 全文索引: search:true 类型 + 已发布才进（业务规则, 引擎无脑执行）
+		// 搜索同步 + 扩展钩子（事务内, 失败回滚 = fail-loud）
 		n.ID = id
-		if s.searchableType(n.Type) && n.Status == StatusPublished {
-			if err := s.search.Sync(tx, n); err != nil {
-				return err
-			}
-		} else if err := s.search.Delete(tx, id); err != nil {
-			return err
-		}
-		// 扩展钩子（事务内, 失败回滚 = fail-loud）
-		return s.hooks.Fire(HookNodeSave, n)
+		return s.syncSearchAndFire(tx, n)
 	})
 	if err != nil {
 		return 0, err
@@ -179,15 +171,8 @@ func (s *Service) Update(n *Node) error {
 			return err
 		}
 		m.ID = n.ID
-		if s.searchableType(m.Type) && m.Status == StatusPublished {
-			if err := s.search.Sync(tx, &m); err != nil {
-				return err
-			}
-		} else if err := s.search.Delete(tx, n.ID); err != nil {
-			return err
-		}
-		// 扩展钩子（事务内, 失败回滚）
-		return s.hooks.Fire(HookNodeSave, &m)
+		// 搜索同步 + 扩展钩子（事务内, 失败回滚）
+		return s.syncSearchAndFire(tx, &m)
 	})
 }
 
@@ -211,6 +196,19 @@ func (s *Service) Delete(id int64) error {
 		// 扩展钩子（事务内, 失败回滚）
 		return s.hooks.Fire(HookNodeDelete, id)
 	})
+}
+
+// syncSearchAndFire 写路径公共尾部: 全文索引同步（search:true + 已发布才进,
+// 业务规则在 Service）+ 扩展钩子。事务内执行, 失败回滚（fail-loud）。
+func (s *Service) syncSearchAndFire(tx *dba.SQL, n *Node) error {
+	if s.searchableType(n.Type) && n.Status == StatusPublished {
+		if err := s.search.Sync(tx, n); err != nil {
+			return err
+		}
+	} else if err := s.search.Delete(tx, n.ID); err != nil {
+		return err
+	}
+	return s.hooks.Fire(HookNodeSave, n)
 }
 
 // ── 读 ─────────────────────────────────────────

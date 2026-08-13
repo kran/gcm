@@ -301,15 +301,6 @@ func FieldByName(td TypeDef, name string) (FieldDef, bool) {
 	return FieldDef{}, false
 }
 
-// TitleField 该类型的标题字段（TypeDef.Title 声明）; 空 = 无标题映射。
-func (t *Types) TitleField(typeName string) string {
-	td, ok := t.defs[typeName]
-	if !ok {
-		return ""
-	}
-	return td.Title
-}
-
 // hasSelfRef 类型是否有自引用 ref 字段（to == 自身类型）。
 func hasSelfRef(td TypeDef) bool {
 	for _, f := range td.Fields {
