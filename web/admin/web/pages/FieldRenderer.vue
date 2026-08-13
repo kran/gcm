@@ -229,7 +229,7 @@ function defaultItem(item) {
 }
 </script>
 <style>
-.fr-item { margin-bottom: 12px; }
+.fr-item { margin-bottom: 12px; width: 100%; min-width: 0; }
 .fr-item .el-input, .fr-item .el-textarea, .fr-item .el-select,
 .fr-item .el-input-number, .fr-item .el-color-picker { width: 100%; }
 .fr-label { font-size: 13px; font-weight: 600; color: #444; margin-bottom: 4px; }
