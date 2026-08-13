@@ -65,13 +65,13 @@ func (c *CmsCtx) Render(candidates []string, data map[string]any) {
 		c.site.renderError(c, "render hook failed: "+err.Error())
 		return
 	}
-	// 默认页面上下文（站点未注入 Page 时计算; 覆盖优先级: 站点 hook > 内置）
-	if _, ok := data["Page"]; !ok {
+	// 页面上下文（站点 PageDataMaker 构造; nil maker = 无 Page）
+	if _, ok := data["Page"]; !ok && c.site.PageDataMaker != nil {
 		var node *core.Node
 		if n, ok := data["Node"].(*core.Node); ok {
 			node = n
 		}
-		data["Page"] = c.site.pageData(c, node)
+		data["Page"] = c.site.PageDataMaker(c, node)
 	}
 	c.site.renderHTML(c, candidates, data)
 }
@@ -87,11 +87,9 @@ type Site struct {
 	// 生产: HTML 注释（不泄漏细节, 仅日志）。
 	Debug bool
 
-	// 分类约定字段（PageData 计算依据）:
-	// 分类类型名 / 分类父引用字段 / 内容分类挂载字段 — 站点字段名不同改这里。
-	categoryType         string // 默认 "category"
-	categoryField        string // 默认 "parent"
-	contentCategoryField string // 默认 "categories"
+	// PageDataMaker 页面上下文构造（站点自定义形态; nil = 无 Page 数据）—
+	// 站点装配时提供（New 参数）; 返回类型任意（模板 .Page.X 访问）。
+	PageDataMaker PageDataMaker
 }
 
 // DB 暴露本站 db（站点项目/admin 用: 首次引导账号、业务表）。
@@ -101,16 +99,14 @@ func (s *Site) DB() *dba.SQL { return s.db }
 func (s *Site) Func(name string, fn any) { s.eng.Func(name, fn) }
 
 // New 建站点。static 是静态资源目录（可为空串 = 不挂静态路由）。
-func New(svc *core.Service, eng *render.Engine, static string) *Site {
+func New(svc *core.Service, eng *render.Engine, static string, maker PageDataMaker) *Site {
 	s := &Site{
-		db:     svc.DB(),
-		svc:    svc,
-		eng:    eng,
-		static: static,
+		db:            svc.DB(),
+		svc:           svc,
+		eng:           eng,
+		static:        static,
+		PageDataMaker: maker,
 	}
-	s.categoryType = "category"
-	s.categoryField = "parent"
-	s.contentCategoryField = "categories"
 	s.Cho = cho.New(func(w http.ResponseWriter, r *http.Request) *CmsCtx {
 		return &CmsCtx{BaseContext: cho.MakeBaseContext(w, r), site: s}
 	})

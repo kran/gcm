@@ -29,7 +29,7 @@ types:
 `)
 	tplA := filepath.Join(dir, "tplA")
 	tplB := filepath.Join(dir, "tplB")
-	app, err := NewApp(Options{}, SiteSpec{
+	app, err := NewApp(Options{}, SiteSpec[any]{
 		Hosts:     []string{"a.com"},
 		DBPath:    filepath.Join(dir, "a.db"),
 		Types:     typesA,
@@ -38,7 +38,7 @@ types:
 			svc.Create(&core.Node{Type: "article", Status: core.StatusPublished, Fields: core.Fields{"title": "A文"}})
 			return nil
 		},
-	}, SiteSpec{
+	}, SiteSpec[any]{
 		Hosts:     []string{"b.com"},
 		DBPath:    filepath.Join(dir, "b.db"),
 		Types:     typesB,

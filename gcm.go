@@ -33,7 +33,8 @@ import (
 )
 
 // SiteSpec 站点装配规格: 骨架配置 + 业务钩子。
-type SiteSpec struct {
+// T 是站点 PageData 泛型（cho 的 CtxMaker[T] 模式 — 站点定形状, gcm 不预设字段名）。
+type SiteSpec[T any] struct {
 	Hosts  []string // 域名列表（Host 头分发键; 多站时必须非空, 单站可空）
 	DBPath string   // SQLite 库文件路径
 	Types  []byte   // types.yaml 内容（类型定义, 站点差异所在）
@@ -44,6 +45,9 @@ type SiteSpec struct {
 	Templates string // 模板目录（node--{type}.html 级联根）
 	Static    string // 静态资源目录（可空 = 不挂 /static）
 	Uploads   string // 上传目录（可空 = 不上传; admin.Mount 时挂 /uploads）
+	// PageDataMaker 页面上下文构造（站点自定义形态; nil = 无 Page 数据）—
+	// 模板 .Page.X 访问站点自己定义的字段/方法。
+	PageDataMaker func(svc *core.Service, ctx *web.CmsCtx, node *core.Node) T
 	// Setup 站点业务装配: 自定义路由 / 模板函数 / seed。装配后调用;
 	// 返回 error = 装配失败（fail-loud）。
 	Setup func(s *web.Site, svc *core.Service) error
@@ -59,7 +63,7 @@ type Options struct {
 }
 
 // App 多站点应用: HostMux 按域名分发到各站点。
-type App struct {
+type App[T any] struct {
 	mux     *web.HostMux
 	sites   []*web.Site
 	options Options
@@ -67,11 +71,11 @@ type App struct {
 
 // NewApp 按规格装配全部站点。任一站点装配失败 → 返回错误（fail-loud）。
 // 第一个 spec 是 fallback 默认站（未知域名/IP 直连落到它）。
-func NewApp(opts Options, specs ...SiteSpec) (*App, error) {
+func NewApp[T any](opts Options, specs ...SiteSpec[T]) (*App[T], error) {
 	if len(specs) == 0 {
 		return nil, fmt.Errorf("gcm: no sites")
 	}
-	app := &App{mux: web.NewHostMux(), options: opts}
+	app := &App[T]{mux: web.NewHostMux(), options: opts}
 	for i, spec := range specs {
 		site, err := app.build(spec)
 		if err != nil {
@@ -89,7 +93,7 @@ func NewApp(opts Options, specs ...SiteSpec) (*App, error) {
 }
 
 // build 单站点装配: db → 迁移 → 类型 → 引擎 → 渲染 → web → admin → Setup。
-func (a *App) build(spec SiteSpec) (*web.Site, error) {
+func (a *App[T]) build(spec SiteSpec[T]) (*web.Site, error) {
 	db, err := dba.Open("sqlite", spec.DBPath)
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
@@ -120,7 +124,12 @@ func (a *App) build(spec SiteSpec) (*web.Site, error) {
 	}
 	svc := core.New(db, ts)
 	eng := render.New(spec.Templates, svc)
-	site := web.New(svc, eng, spec.Static)
+	// PageDataMaker 泛型 T → any 包装（web 用 any, 类型在 App 层）
+	var maker web.PageDataMaker
+	if spec.PageDataMaker != nil {
+		maker = func(ctx *web.CmsCtx, n *core.Node) any { return spec.PageDataMaker(svc, ctx, n) }
+	}
+	site := web.New(svc, eng, spec.Static, maker)
 	site.Debug = a.options.Debug
 	admin.Mount(site, svc, ts, spec.Uploads)
 	if spec.Setup != nil {
@@ -132,13 +141,13 @@ func (a *App) build(spec SiteSpec) (*web.Site, error) {
 }
 
 // Handler 应用入口（测试/嵌入用）。
-func (a *App) Handler() http.Handler { return a.mux }
+func (a *App[T]) Handler() http.Handler { return a.mux }
 
 // Listen 监听并服务。
-func (a *App) Listen(addr string) error {
+func (a *App[T]) Listen(addr string) error {
 	log.Printf("gcm: listening on %s (%d site(s))", addr, len(a.sites))
 	return http.ListenAndServe(addr, a.mux)
 }
 
 // Sites 全部站点（按装配序; 第一个是 fallback）。
-func (a *App) Sites() []*web.Site { return a.sites }
+func (a *App[T]) Sites() []*web.Site { return a.sites }
