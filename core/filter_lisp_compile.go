@@ -33,33 +33,32 @@ type lispCompiler struct {
 // lispFuncC 函数编译器（var 链版）: 返回片段（主链或 ${eN} 引用）。
 type lispFuncC func(args []lispExpr) (string, error)
 
-// CompileLispV 编译 Lisp filter → (where, args) — var 链构建。
-func (s *Service) CompileLispV(expr, typeName string, params map[string]any) (string, []any, error) {
+// CompileLispInto 在 q 上挂载 ${where} var（嵌套 var 同实例 — 原样保留,
+// 不 ToSQL）。q 是调用方的 dba 链（base SQL 模板含 ${where} 槽）;
+// 返回挂好 var 的 q, 调用方继续链式操作, 最终执行时统一展开。
+func (s *Service) CompileLispInto(q *dba.SQL, expr, typeName string, params map[string]any) (*dba.SQL, error) {
 	e, err := parseLisp(expr)
 	if err != nil {
-		return "", nil, err
+		return nil, err
 	}
 	td, ok := s.types.Type(typeName)
 	if !ok {
-		return "", nil, fmt.Errorf("core: type %q not defined", typeName)
+		return nil, fmt.Errorf("core: type %q not defined", typeName)
 	}
-	// var 链用 #{n} formatter（保持宏编号 — 调用方 ListAny/ListFiltered 用 #{n}）;
-	// 默认 qmark（?）会与调用方 #{n} 混用冲突
-	c := &lispCompiler{svc: s, q: s.db.Formatter(func(idx int) string { return fmt.Sprintf("#{%d}", idx) }),
-		td: &td, nodeRef: "nodes", params: params}
+	c := &lispCompiler{svc: s, q: q, td: &td, nodeRef: "nodes", params: params}
 	if e.head == "" {
-		return "", nil, fmt.Errorf("filter-lisp: top-level must be a call")
+		return nil, fmt.Errorf("filter-lisp: top-level must be a call")
 	}
 	fn, ok := c.funcs()[e.head]
 	if !ok {
-		return "", nil, fmt.Errorf("filter-lisp: unknown function %q", e.head)
+		return nil, fmt.Errorf("filter-lisp: unknown function %q", e.head)
 	}
 	top, err := fn(e.args)
 	if err != nil {
-		return "", nil, err
+		return nil, err
 	}
-	c.q = c.q.Add(top)
-	return c.q.ToSQL()
+	// 顶层: ${where} 槽 — var 挂载（参数在此, 原样保留）
+	return c.q.Var("where", top), nil
 }
 
 // varRef 注册片段为 ${eN}, 返回引用（参数独立编号）。

@@ -541,3 +541,62 @@ func ToID(v any) (int64, error) {
 		return 0, fmt.Errorf("expects node id (int64), got %T", v)
 	}
 }
+
+// ── 结构化查询（base SQL 模板 + var 槽）─────────────
+//
+// ListQuery 是 List/ListFiltered 的结构化替代: 过滤（Lisp 表达式）、排序、
+// 展开、分页 — 内部用 dba var 槽（${where} ${order}）组合, 不拼字符串。
+// Lisp filter 编译器（CompileLispInto）作为 ${where} 槽的挂载器。
+type ListQuery struct {
+	Type   string // 查询类型（Lisp filter 编译的字段校验依据; 空 = 无类型过滤）
+	Filter string // Lisp filter 表达式（空 = 不过滤）
+	Sort   string // 排序（空 = 默认 ORDER BY sort, id DESC）
+	Expand string // 展开表达式（预留）
+	Page   int
+	Size   int
+}
+
+// ListQ 结构化查询执行: base SQL 模板 + ${where}/${order} var 槽。
+func (s *Service) ListQ(q ListQuery) ([]Node, int64, error) {
+	if q.Page < 1 {
+		q.Page = 1
+	}
+	if q.Size < 1 {
+		q.Size = 20
+	}
+	// 模板: ${where} 槽（Lisp 编译器挂载）; ${order} 槽（排序）; 分页参数
+	db := s.db.Add(`SELECT * FROM nodes WHERE ${where} ${order:ORDER BY sort, id DESC} LIMIT #{1} OFFSET #{2}`,
+		q.Size, (q.Page-1)*q.Size)
+	if q.Filter != "" {
+		var err error
+		db, err = s.CompileLispInto(db, q.Filter, q.Type, nil)
+		if err != nil {
+			return nil, 0, err
+		}
+	} else {
+		db = db.Var("where", "1 = 1")
+	}
+	if q.Sort != "" {
+		db = db.Var("order", "ORDER BY "+q.Sort)
+	}
+	var rows []Node
+	if err := db.List(&rows); err != nil {
+		return nil, 0, err
+	}
+	// 总数（同 where）
+	cdb := s.db.Add(`SELECT COUNT(1) FROM nodes WHERE ${where}`)
+	if q.Filter != "" {
+		var err error
+		cdb, err = s.CompileLispInto(cdb, q.Filter, q.Type, nil)
+		if err != nil {
+			return nil, 0, err
+		}
+	} else {
+		cdb = cdb.Var("where", "1 = 1")
+	}
+	var total int64
+	if _, err := cdb.Get(&total); err != nil {
+		return nil, 0, err
+	}
+	return rows, total, nil
+}
