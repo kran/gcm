@@ -12,7 +12,7 @@ import (
 //
 // 语法:
 //
-//	filter = "status = 1 && categories ~ {cat} && $.title like {kw}"
+//	filter = "status = 1 && categories ~ {:cat} && $.title like {:kw}"
 //
 //	比较:   [<-] 路径 操作符 值 | <- 路径（入边存在性）
 //	路径:   段 ("." 段)*; 段 = "$.字段"（fields JSON）| "字段"（列/引用）
@@ -527,8 +527,8 @@ func (s *Service) buildCmp(c *cmpExpr, td *types.TypeDef, params map[string]any,
 	if valErr != nil {
 		return "", nil, valErr
 	}
-	ph := func() string { n := *idx; *idx++; return fmt.Sprintf("#{%d}", n) }
-	qi := func() string { n := *idx; *idx++; return fmt.Sprintf("#{%d|quote}", n) }
+	g := phGen{idx}
+	ph, qi := g.bind, g.quote
 	// $.字段: 本节点 JSON 标量
 	if seg.JSON {
 		f, ok := types.FieldByName(*td, seg.Field)
@@ -592,8 +592,8 @@ func (s *Service) refCmp(c *cmpExpr, f types.FieldDef, val any, params map[strin
 	if c.op != "" && c.op != "~" && c.op != "=" {
 		return "", nil, fmt.Errorf("filter: ref field %q supports ~ or =, got %q", f.Name, c.op)
 	}
-	ph := func() string { n := *idx; *idx++; return fmt.Sprintf("#{%d}", n) }
-	exp := func() string { n := *idx; *idx++; return fmt.Sprintf("#{%d|expand}", n) }
+	g := phGen{idx}
+	ph, exp := g.bind, g.expand
 	// 数组值: id 集合（~ 专用）→ IN (#{n|expand})
 	if arr, ok := val.([]any); ok {
 		if c.op != "~" {
@@ -607,20 +607,23 @@ func (s *Service) refCmp(c *cmpExpr, f types.FieldDef, val any, params map[strin
 		}
 		return "EXISTS(SELECT 1 FROM edges WHERE field = " + ph() + " AND from_node = nodes.id AND to_node IN (" + exp() + "))", []any{f.Name, arr}, nil
 	}
-	// 字段名 bind 参数化（field 是值比较, 不拼字符串）
+	// 方向与关联: 出边 = 我引用谁（from_node = 本节点, to_node = 值）;
+	// 入边 = 谁引用我（to_node = 本节点, from_node = 值）。参数化模板,
+	// 否定 = NOT 前缀 — 方向×否定 4 态收敛为 2 个模板。
+	link, other := "from_node = nodes.id AND to_node", "to_node = nodes.id AND from_node"
+	if c.in {
+		link, other = other, link
+	}
+	neg := ""
+	if c.op == "!=" {
+		neg = "NOT "
+	}
+	// 入边存在性（无值）
 	if c.op == "" && c.in {
 		return "EXISTS(SELECT 1 FROM edges WHERE field = " + ph() + " AND to_node = nodes.id)", []any{f.Name}, nil
 	}
-	if c.in {
-		if c.op == "!=" {
-			return "NOT EXISTS(SELECT 1 FROM edges WHERE field = " + ph() + " AND to_node = nodes.id AND from_node = " + ph() + ")", []any{f.Name, val}, nil
-		}
-		return "EXISTS(SELECT 1 FROM edges WHERE field = " + ph() + " AND to_node = nodes.id AND from_node = " + ph() + ")", []any{f.Name, val}, nil
-	}
-	if c.op == "!=" {
-		return "NOT EXISTS(SELECT 1 FROM edges WHERE field = " + ph() + " AND from_node = nodes.id AND to_node = " + ph() + ")", []any{f.Name, val}, nil
-	}
-	return "EXISTS(SELECT 1 FROM edges WHERE field = " + ph() + " AND from_node = nodes.id AND to_node = " + ph() + ")", []any{f.Name, val}, nil
+	return neg + "EXISTS(SELECT 1 FROM edges WHERE field = " + ph() +
+		" AND " + link + " = " + ph() + ")", []any{f.Name, val}, nil
 }
 
 func (s *Service) refThroughCmp(c *cmpExpr, f types.FieldDef, val any, params map[string]any, idx *int) (string, []any, error) {
@@ -636,8 +639,8 @@ func (s *Service) refThroughCmp(c *cmpExpr, f types.FieldDef, val any, params ma
 	if c.in {
 		col = "from_node"
 	}
-	ph := func() string { n := *idx; *idx++; return fmt.Sprintf("#{%d}", n) }
-	qi := func() string { n := *idx; *idx++; return fmt.Sprintf("#{%d|quote}", n) }
+	g := phGen{idx}
+	ph, qi := g.bind, g.quote
 	var cond string
 	var condArgs []any
 	if seg2.JSON {
@@ -676,6 +679,14 @@ func (s *Service) refThroughCmp(c *cmpExpr, f types.FieldDef, val any, params ma
 	return "EXISTS(SELECT 1 FROM edges e JOIN nodes t ON t.id = e." + qi() +
 		" WHERE e.field = " + ph() + " AND " + link + " AND " + cond + ")", args, nil
 }
+
+// phGen dba 占位符生成器（buildCmp/refCmp/refThroughCmp 共享）:
+// 三种占位符形态 — 值绑定 / 标识符引用 / 切片展开。
+type phGen struct{ idx *int }
+
+func (g phGen) bind() string   { n := *g.idx; *g.idx++; return fmt.Sprintf("#{%d}", n) }
+func (g phGen) quote() string  { n := *g.idx; *g.idx++; return fmt.Sprintf("#{%d|quote}", n) }
+func (g phGen) expand() string { n := *g.idx; *g.idx++; return fmt.Sprintf("#{%d|expand}", n) }
 
 // valueParam 值/占位符/数组 → 参数值（数组元素逐个解析占位符）。
 func valueParam(v any, params map[string]any) (any, error) {

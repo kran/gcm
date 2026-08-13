@@ -31,8 +31,11 @@ func (s *Service) nodesByIDs(ids []int64) ([]Node, error) {
 //	点号 = 串行路径（前段展开的节点继续展开后段）
 //	"<-" 前缀 = 入边（谁引用我）; 无标记 = 出边（默认）
 //
-// 结果形态由类型定义驱动: ClassRef → *Node 单值, ClassRefList → []*Node 数组。
+// 结果形态: 出边由 Class 驱动（ClassRef → *Node 单值, ClassRefList → []*Node）;
+// 入边永远是 []*Node（"谁引用我"无唯一约束, 来源是集合）。
 // 路径长度显式（无 depth 数字）→ 天然有界; 环由显式路径规避。
+// 实现: 单节点 ExpandPath 委托批量版（单元素列表）— 一套批量逻辑,
+// 查询次数 = 路径长度, 与节点数无关。
 
 // ExpandPath 按表达式展开单个节点（委托批量版, 单元素列表）。
 func (s *Service) ExpandPath(id int64, expr string) (*Node, error) {
@@ -83,85 +86,6 @@ func expandKey(seg types.Seg) string {
 		return "<-" + seg.Field
 	}
 	return seg.Field
-}
-
-// expandPathRec 在 node 上展开 path[segIdx:]; 结果挂 node.Expand[expandKey]。
-// 双向同名字段: 出边 "categories" / 入边 "<-categories" 各自独立, 不覆盖。
-func (s *Service) expandPathRec(node *Node, path []types.Seg, segIdx int) error {
-	seg := path[segIdx]
-	// 方向: 出边按宿主类型查字段, 入边全局查
-	var f types.FieldDef
-	var sym bool
-	var err error
-	if seg.In {
-		f, sym, err = s.refFieldMetaGlobal(seg.Field)
-	} else {
-		f, sym, err = s.refFieldMeta(node.ID, seg.Field)
-	}
-	if err != nil {
-		return fmt.Errorf("core: expand %q: %w", seg.Field, err)
-	}
-	_ = sym
-	// 取边（出/入）: 最多一层（路径段即层）。
-	// ⚠ 爆炸防护: 单字段超 1000 条响亮报错（不静默截断）— expand 是装配
-	// 原语（小集合）; 大集合用 inRefs/outRefs 分页或 Go 层聚合。
-	var edges []Edge
-	var total int64
-	if seg.In {
-		edges, total, err = s.InRefs(node.ID, seg.Field, 1, 1000)
-	} else {
-		edges, total, err = s.OutRefs(node.ID, seg.Field, 1, 1000)
-	}
-	if err != nil {
-		return err
-	}
-	if total > 1000 {
-		return fmt.Errorf("core: expand %q: %d refs exceed 1000 limit (expand is for assembly; use inRefs/outRefs pagination for large sets)", seg.Field, total)
-	}
-	// 目标 id（入边取来源, 出边取目标）
-	ids := make([]int64, 0, len(edges))
-	for _, e := range edges {
-		if seg.In {
-			ids = append(ids, e.FromNode)
-		} else {
-			ids = append(ids, e.ToNode)
-		}
-	}
-	// 批量取节点
-	nodes, err := s.nodesByIDs(ids)
-	if err != nil {
-		return err
-	}
-	// 形态: ClassRef → 单值, ClassRefList → 数组（类型定义驱动）
-	kind, ok := s.types.Kind(f.Kind)
-	if !ok {
-		return fmt.Errorf("core: expand: unknown kind %q", f.Kind)
-	}
-	ptrs := make([]*Node, 0, len(nodes))
-	for i := range nodes {
-		ptrs = append(ptrs, &nodes[i])
-	}
-	// 递归下一段（若有）
-	if segIdx+1 < len(path) {
-		for _, n := range ptrs {
-			if n.Expand == nil {
-				n.Expand = map[string]any{}
-			}
-			if err := s.expandPathRec(n, path, segIdx+1); err != nil {
-				return err
-			}
-		}
-	}
-	// 挂载（出边形态由 Class 驱动: ref → 单值; 入边永远是集合 —
-	// "谁引用我"无唯一约束, N 个来源 → 数组, 与字段 Class 无关）
-	if kind.Class() == types.ClassRef && !seg.In {
-		if len(ptrs) > 0 {
-			node.Expand[expandKey(seg)] = ptrs[0]
-		}
-	} else {
-		node.Expand[expandKey(seg)] = ptrs
-	}
-	return nil
 }
 
 // ── 批量 expand（列表场景, 避免 N+1）───────────────
@@ -275,10 +199,11 @@ func (s *Service) expandBatch(nodes []*Node, path []types.Seg, segIdx int) error
 	return nil
 }
 
-// edgesFor 批量查边: ids 集合的出边（out=true 按 from_node）或入边（按 to_node）。
-// 返回 map[节点id][]Edge — 一次查询, 按节点分组。
 // expandRefLimit 单字段展开上限（爆炸防护: 超限响亮报错）。
 const expandRefLimit = 1000
+
+// edgesFor 批量查边: ids 集合的出边（out=true 按 from_node）或入边（按 to_node）。
+// 返回 map[节点id][]Edge — 一次查询, 按节点分组。
 
 func (s *Service) edgesFor(ids []int64, field string, in bool, max int) (map[int64][]Edge, error) {
 	if len(ids) == 0 {
