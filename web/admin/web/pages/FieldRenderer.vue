@@ -230,6 +230,8 @@ function defaultItem(item) {
 </script>
 <style>
 .fr-item { margin-bottom: 12px; }
+.fr-item .el-input, .fr-item .el-textarea, .fr-item .el-select,
+.fr-item .el-input-number, .fr-item .el-color-picker { width: 100%; }
 .fr-label { font-size: 13px; font-weight: 600; color: #444; margin-bottom: 4px; }
 .fr-kind { font-weight: 400; color: #aaa; font-size: 11px; margin-left: 6px; }
 .fr-req { color: #e60012; margin-left: 2px; }

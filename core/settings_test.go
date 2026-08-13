@@ -53,3 +53,21 @@ func TestSettings(t *testing.T) {
 		t.Fatal("value validation must fail")
 	}
 }
+
+// settings array（隐含 array<string>）: 合法/非法元素校验。
+func TestSettingsArray(t *testing.T) {
+	s := newFilterSvc(t)
+	if err := s.SetSetting(Setting{Key: "tags", Group: "seo", Kind: "array", Note: "关键词", Value: []any{"a", "b"}}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.GetSetting("tags")
+	if len(got.Value.([]any)) != 2 {
+		t.Fatalf("array: %v", got.Value)
+	}
+	if err := s.SetSetting(Setting{Key: "x", Kind: "array", Value: "not-array"}); err == nil {
+		t.Fatal("non-array must fail")
+	}
+	if err := s.SetSetting(Setting{Key: "x", Kind: "array", Value: []any{"a", 5}}); err == nil {
+		t.Fatal("non-string element must fail")
+	}
+}

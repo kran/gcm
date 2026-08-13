@@ -79,12 +79,25 @@ func (s *Service) ListSettings(group string) ([]Setting, error) {
 // SetSetting upsert 一条配置: kind 必须已注册（复用类型系统校验）+ 值经
 // kind.Validate（fail-loud）。group/note 是元数据透传。
 func (s *Service) SetSetting(st Setting) error {
-	k, ok := s.types.Kind(st.Kind)
-	if !ok {
-		return fmt.Errorf("core: settings %q: unknown kind %q", st.Key, st.Kind)
-	}
-	if err := k.Validate(st.Value); err != nil {
-		return fmt.Errorf("core: settings %q: %w", st.Key, err)
+	if st.Kind == "array" {
+		// 隐含 array<string>: 配置最常见形态（标签/URL 列表）— 无子定义
+		arr, ok := st.Value.([]any)
+		if !ok {
+			return fmt.Errorf("core: settings %q: array expects []any, got %T", st.Key, st.Value)
+		}
+		for _, e := range arr {
+			if _, ok := e.(string); !ok {
+				return fmt.Errorf("core: settings %q: array elements must be strings, got %T", st.Key, e)
+			}
+		}
+	} else {
+		k, ok := s.types.Kind(st.Kind)
+		if !ok {
+			return fmt.Errorf("core: settings %q: unknown kind %q", st.Key, st.Kind)
+		}
+		if err := k.Validate(st.Value); err != nil {
+			return fmt.Errorf("core: settings %q: %w", st.Key, err)
+		}
 	}
 	raw, err := json.Marshal(st.Value)
 	if err != nil {
