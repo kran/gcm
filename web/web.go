@@ -24,10 +24,17 @@ import (
 	"github.com/kran/gcm/core/render"
 )
 
-// HookNodeRender 节点页渲染事件（站点扩展注入渲染数据）:
+// HookRender 渲染事件（所有页面渲染前触发 — 站点注入页面级数据）:
+// 原型 func(ctx *CmsCtx, data map[string]any) error —
+// CmsCtx.Render 统一出口 Fire; 站点注入 Page 上下文/导航高亮等
+// 页面级数据（节点页 + 自定义路由页全覆盖）。定义在 web 包
+// （proto 带 CmsCtx, core 不引用 web）; 总线是 core 的。
+const HookRender = "web.render"
+
+// HookNodeRender 节点页渲染事件（节点级数据扩展）:
 // 原型 func(ctx *CmsCtx, n *core.Node, data map[string]any) error —
-// 内置 node 路由渲染前触发, 站点往 data 里注入页面上下文/附加数据。
-// 定义在 web 包（proto 带 CmsCtx, core 不引用 web）; 总线是 core 的。
+// 内置 node 路由渲染前触发, 站点注入节点附加数据（Extra.url 等）。
+// 页面级数据（Page 上下文）用 HookRender。
 const HookNodeRender = "web.node.render"
 
 // CmsCtx 请求上下文（富上下文: 携带站点引用, 自定义路由一行拿引擎 —
@@ -46,8 +53,13 @@ func (c *CmsCtx) Engine() *render.Engine { return c.site.eng }
 // DB 底层数据库（业务表/逃生舱）。
 func (c *CmsCtx) DB() *dba.SQL { return c.site.db }
 
-// Render 站点渲染出口: 候选级联 + 渲染错误 → HTML 注释（fail-loud 可见）。
+// Render 站点渲染出口: 渲染前 Fire HookRender（站点注入页面级数据）,
+// 候选级联 + 渲染错误 → HTML 注释（fail-loud 可见）。
 func (c *CmsCtx) Render(candidates []string, data map[string]any) {
+	if err := c.site.svc.Hooks().Fire(HookRender, c, data); err != nil {
+		c.site.renderError(c, "render hook failed: "+err.Error())
+		return
+	}
 	c.site.renderHTML(c, candidates, data)
 }
 
@@ -78,9 +90,11 @@ func New(svc *core.Service, eng *render.Engine, static string) *Site {
 		return &CmsCtx{BaseContext: cho.MakeBaseContext(w, r), site: s}
 	})
 	// 声明渲染事件（注册即校验签名; 站点 AddHook 前必须存在）
-	if err := svc.Hooks().Define(hook.Spec{Name: HookNodeRender,
-		Proto: func(*CmsCtx, *core.Node, map[string]any) error { return nil }}); err != nil {
-		panic("web: define HookNodeRender: " + err.Error())
+	if err := svc.Hooks().Define(
+		hook.Spec{Name: HookRender, Proto: func(*CmsCtx, map[string]any) error { return nil }},
+		hook.Spec{Name: HookNodeRender, Proto: func(*CmsCtx, *core.Node, map[string]any) error { return nil }},
+	); err != nil {
+		panic("web: define render hooks: " + err.Error())
 	}
 	s.mount()
 	return s
@@ -118,6 +132,13 @@ func (s *Site) renderHTML(ctx *CmsCtx, candidates []string, data map[string]any)
 	}
 	ctx.SetHeader("Content-Type", "text/html; charset=utf-8")
 	_, _ = ctx.W.Write(buf.Bytes())
+}
+
+// renderError 渲染失败出口: HTML 注释（fail-loud 可见）。
+func (s *Site) renderError(ctx *CmsCtx, msg string) {
+	slog.Error("render failed", "path", ctx.R.URL.Path, "err", msg)
+	ctx.SetHeader("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(ctx.W, "<!-- render error: %s -->", htmlCommentSafe(msg))
 }
 
 // render404 统一 404 出口: 有 404.html 渲染之, 否则纯文本。
@@ -170,7 +191,8 @@ func (s *Site) nodeHandler() func(ctx *CmsCtx) {
 			ctx.String(http.StatusInternalServerError, "500 internal server error")
 			return
 		}
-		s.renderHTML(ctx, render.Candidates(n), data)
+		// 统一走 Render（Fire HookRender — 页面级数据注入与自定义路由一致）
+		ctx.Render(render.Candidates(n), data)
 	}
 }
 
