@@ -139,8 +139,8 @@ export default {
             this.dialog.isNew = !r
             this.dialog.key = r ? r.key : ''
             this.dialog.group = r ? r.group : ''
-            let v = {}
-            if (r) { try { v = JSON.parse(r.value) } catch (_) { v = r.value } }
+            // gcm 后端已解码 Value（cmx 是 JSON 字符串需 parse — 移植时删）
+            let v = r ? r.value : {}
             // 类型以存库为准（string/text/file/richtext 值都是字符串, 反推不可靠）
             const ed = this.toEditable(v)
             ed.kind = r ? r.type : 'object' // 新建默认 object
