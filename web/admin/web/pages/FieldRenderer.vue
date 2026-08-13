@@ -9,9 +9,9 @@
                 </div>
 
                 <!-- 标量 -->
-                <el-input v-if="f.editor === 'text'" :model-value="get(f.name)"
+                <el-input v-if="widgetOf(f) === 'text'" :model-value="get(f.name)"
                     @update:model-value="set(f.name, $event)" />
-                <div v-else-if="f.editor === 'upload-image'" class="fr-image">
+                <div v-else-if="widgetOf(f) === 'upload-image'" class="fr-image">
                     <el-input :model-value="get(f.name)" @update:model-value="set(f.name, $event)"
                         placeholder="/uploads/xxx.png" />
                     <input type="file" :ref="'file-' + f.name" style="display:none;" accept="image/*"
@@ -19,14 +19,14 @@
                     <el-button size="small" @click="pickFile(f.name)">上传</el-button>
                     <img v-if="get(f.name)" :src="get(f.name)" class="fr-image-preview" />
                 </div>
-                <div v-else-if="f.editor === 'upload-file'" class="fr-image">
+                <div v-else-if="widgetOf(f) === 'upload-file'" class="fr-image">
                     <el-input :model-value="get(f.name)" @update:model-value="set(f.name, $event)"
                         placeholder="/uploads/xxx.mp4" />
                     <input type="file" :ref="'file-' + f.name" style="display:none;"
                         @change="uploadImage(f.name, $event)" />
                     <el-button size="small" @click="pickFile(f.name)">上传</el-button>
                 </div>
-                <div v-else-if="f.editor === 'ref'" class="fr-ref">
+                <div v-else-if="widgetOf(f) === 'ref'" class="fr-ref">
                     <el-select :model-value="get(f.name)" filterable remote clearable
                                :remote-method="(q) => searchRef(f, q)"
                                :loading="refLoading[f.name]" placeholder="搜索并选择节点"
@@ -35,7 +35,7 @@
                                    :label="o.label" :value="o.id" />
                     </el-select>
                 </div>
-                <div v-else-if="f.editor === 'ref[]'" class="fr-ref">
+                <div v-else-if="widgetOf(f) === 'ref[]'" class="fr-ref">
                     <el-select :model-value="get(f.name) || []" multiple filterable remote
                                :remote-method="(q) => searchRef(f, q)"
                                :loading="refLoading[f.name]" placeholder="搜索并选择多个节点"
@@ -44,17 +44,17 @@
                                    :label="o.label" :value="o.id" />
                     </el-select>
                 </div>
-                <el-input v-else-if="f.editor === 'textarea'" type="textarea" :rows="4"
+                <el-input v-else-if="widgetOf(f) === 'textarea'" type="textarea" :rows="4"
                     :model-value="get(f.name)" @update:model-value="set(f.name, $event)" />
-                <rich-editor v-else-if="f.editor === 'richtext'" :model-value="get(f.name) || ''"
+                <rich-editor v-else-if="widgetOf(f) === 'richtext'" :model-value="get(f.name) || ''"
                     @update:model-value="set(f.name, $event)" />
-                <el-input-number v-else-if="f.editor === 'number'" :model-value="get(f.name)"
+                <el-input-number v-else-if="widgetOf(f) === 'number'" :model-value="get(f.name)"
                     @update:model-value="set(f.name, $event)" style="width:200px;" />
-                <el-switch v-else-if="f.editor === 'bool'" :model-value="!!get(f.name)"
+                <el-switch v-else-if="widgetOf(f) === 'bool'" :model-value="!!get(f.name)"
                     @update:model-value="set(f.name, $event)" />
 
                 <!-- 数组 -->
-                <div v-else-if="f.editor === 'array'" class="fr-array">
+                <div v-else-if="widgetOf(f) === 'array'" class="fr-array">
                     <!-- 字符串数组 → 标签输入 -->
                     <el-select v-if="f.item && f.item.kind === 'string'" multiple allow-create filterable
                         default-first-option :model-value="get(f.name) || []"
@@ -85,16 +85,16 @@
                 </div>
 
                 <!-- 对象 (递归) -->
-                <div v-else-if="f.editor === 'object'" class="fr-object">
+                <div v-else-if="widgetOf(f) === 'object'" class="fr-object">
                     <field-renderer :fields="f.fields || []" :model-value="get(f.name) || {}"
                         @update:model-value="set(f.name, $event)" />
                 </div>
 
                 <!-- 站点扩展控件: /admin/ui-extras/{editor}.vue 动态加载（cmx 面板模式） -->
-                <div v-else-if="extraWidgets[f.editor] === false" class="fr-unknown">
-                    ⚠ 未知控件类型 &quot;{{ f.editor }}&quot;（站点未挂载对应组件）
+                <div v-else-if="extraWidgets[widgetOf(f)] === false" class="fr-unknown">
+                    ⚠ 未知控件类型 &quot;{{ widgetOf(f) }}&quot;（站点未挂载对应组件）
                 </div>
-                <component v-else :is="extraWidgets[f.editor]" :model-value="get(f.name)"
+                <component v-else :is="extraWidgets[widgetOf(f)]" :model-value="get(f.name)"
                     @update:model-value="set(f.name, $event)" />
 
             </div>
@@ -132,6 +132,9 @@ export default {
         },
     },
     methods: {
+        // 控件原语名: editor（后端回填）兜底 kind（前端构造的伪 FieldDef,
+        // 如 settings 值编辑 — kind 名即原语名）
+        widgetOf(f) { return f.editor || f.kind },
         // 内置控件原语集合（其余 editor → 站点扩展组件动态加载）
         builtinWidgets() {
             return ['text', 'textarea', 'richtext', 'number', 'bool',
@@ -140,8 +143,8 @@ export default {
         resolveExtraWidgets() {
             const builtin = this.builtinWidgets()
             ;(this.fields || []).forEach(f => {
-                if (f.editor && builtin.indexOf(f.editor) < 0 && this.extraWidgets[f.editor] === undefined) {
-                    this.resolveWidget(f.editor)
+                if (f.editor && builtin.indexOf(f.editor) < 0 && this.extraWidgets[widgetOf(f)] === undefined) {
+                    this.resolveWidget(this.widgetOf(f))
                 }
             })
         },

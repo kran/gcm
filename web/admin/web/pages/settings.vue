@@ -62,7 +62,7 @@ export default {
     data() {
         return {
             rows: [], groups: [], group: '', loading: false,
-            kindNames: ['string', 'text', 'richtext', 'number', 'bool', 'array', 'object'],
+            kindNames: ['string', 'text', 'richtext', 'number', 'bool'],
             dialog: { visible: false, isEdit: false, saving: false, form: {} },
             valueModel: {},
         }
@@ -71,7 +71,7 @@ export default {
         // 值编辑: 伪装成单字段 FieldDef（kind → editor 映射自动生效, 复合字段也支持）
         valueField() {
             const kind = this.dialog.form.kind || 'string'
-            return [{ name: 'value', kind: kind, label: '值' }]
+            return [{ name: 'value', kind: kind, label: '值', editor: kind }]
         },
     },
     async mounted() { await this.load() },
