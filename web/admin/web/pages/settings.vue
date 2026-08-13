@@ -186,7 +186,7 @@ export default {
         },
         // JSON 值 → 编辑中间形态（typeOf 推断; 打开时以存库 type 覆盖）
         toEditable(v) {
-            let kind = 'string'
+            let kind = 'text' // 字符串默认（kind 改名后: string→text）
             if (v !== null && v !== undefined && v !== '') {
                 const t = typeof v
                 if (t === 'object') kind = Array.isArray(v) ? 'array' : 'object'
