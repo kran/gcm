@@ -3,6 +3,11 @@ package types
 // refKind 单引用: 值是一个整数节点 id。
 type refKind struct{}
 
+// KindRef kind 名; WidgetEntityPicker 编辑控件原语（各 kind 自包含定义 — 加新 kind
+// 只动一个文件）。
+const KindRef = "ref"
+const WidgetEntityPicker = Widget("ref")
+
 func (refKind) Name() string { return KindRef }
 func (refKind) Validate(v any) error {
 	if _, err := ToID(v); err != nil {

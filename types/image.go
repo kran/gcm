@@ -7,6 +7,11 @@ import "strings"
 // imageKind 图片 URL/路径。
 type imageKind struct{}
 
+// KindImage kind 名; WidgetUploadImage 编辑控件原语（各 kind 自包含定义 — 加新 kind
+// 只动一个文件）。
+const KindImage = "image"
+const WidgetUploadImage = Widget("upload-image")
+
 func (imageKind) Name() string { return KindImage }
 func (imageKind) Validate(v any) error {
 	if _, ok := v.(string); !ok {

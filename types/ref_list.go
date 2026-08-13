@@ -5,6 +5,11 @@ import "fmt"
 // refListKind 多引用: 值是节点 id 数组。
 type refListKind struct{}
 
+// KindRefList kind 名; WidgetEntityList 编辑控件原语（各 kind 自包含定义 — 加新 kind
+// 只动一个文件）。
+const KindRefList = "ref[]"
+const WidgetEntityList = Widget("ref[]")
+
 func (refListKind) Name() string { return KindRefList }
 func (refListKind) Validate(v any) error {
 	arr, ok := v.([]any)

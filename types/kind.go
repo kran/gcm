@@ -34,16 +34,3 @@ const (
 	ClassRef                  // 单引用: 值 → 1 条 edge
 	ClassRefList              // 多引用: 值 → N 条 edge
 )
-
-// 字段 kind 名（内置实现的名字）。
-const (
-	KindString   = "string"
-	KindText     = "text"
-	KindRichtext = "richtext"
-	KindNumber   = "number"
-	KindBool     = "bool"
-	KindImage    = "image"
-	KindFile     = "file"
-	KindRef      = "ref"   // 单引用: 指向一个节点
-	KindRefList  = "ref[]" // 多引用: 指向多个节点
-)

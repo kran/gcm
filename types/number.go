@@ -5,6 +5,11 @@ import "fmt"
 // numberKind 数值（int/uint 家族 + float64）。
 type numberKind struct{}
 
+// KindNumber kind 名; WidgetNumber 编辑控件原语（各 kind 自包含定义 — 加新 kind
+// 只动一个文件）。
+const KindNumber = "number"
+const WidgetNumber = Widget("number")
+
 func (numberKind) Name() string { return KindNumber }
 func (numberKind) Validate(v any) error {
 	if !isNumber(v) {

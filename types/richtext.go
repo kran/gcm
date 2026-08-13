@@ -7,6 +7,11 @@ import "strings"
 // richtextKind 富文本 HTML。
 type richtextKind struct{}
 
+// KindRichtext kind 名; WidgetRichtext 编辑控件原语（各 kind 自包含定义 — 加新 kind
+// 只动一个文件）。
+const KindRichtext = "richtext"
+const WidgetRichtext = Widget("richtext")
+
 func (richtextKind) Name() string { return KindRichtext }
 func (richtextKind) Validate(v any) error {
 	if _, ok := v.(string); !ok {

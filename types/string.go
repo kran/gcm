@@ -1,11 +1,17 @@
 package types
 
-import "fmt"
-
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // stringKind 单行字符串。
 type stringKind struct{}
+
+// KindString kind 名; WidgetInput 编辑控件原语（各 kind 自包含定义 — 加新 kind
+// 只动一个文件）。
+const KindString = "string"
+const WidgetInput = Widget("text")
 
 func (stringKind) Name() string { return KindString }
 func (stringKind) Validate(v any) error {
