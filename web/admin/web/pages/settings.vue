@@ -193,7 +193,7 @@ export default {
             const out = { kind, scalar: null, entries: [], array: [] }
             if (kind === 'number') out.scalar = typeof v === 'number' ? v : Number(v) || 0
             else if (kind === 'bool') out.scalar = !!v
-            else if (kind === 'text' || kind === 'textarea') out.scalar = v
+            else if (kind === 'text' || kind === 'textarea' || kind === 'richtext' || kind === 'upload-file') out.scalar = v
             else if (kind === 'object') {
                 out.entries = Object.entries(v || {}).map(kv => ({ name: kv[0], value: typeof kv[1] === 'string' ? kv[1] : JSON.stringify(kv[1]) }))
             } else if (kind === 'array') {
