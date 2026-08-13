@@ -11,8 +11,8 @@ import (
 //
 //	语法:   [<-] 段 ("." 段)*
 //	段:     "$.字段"（fields JSON）| "字段"（列或引用, 由消费方按三层存储裁决）
-//	"<-" 仅首段（入边）; "$." 任意段（filter 首段 $.x = 本节点 JSON 字段;
-//	title/expand 在语义层各自拒绝不支持的形态）。
+//	"<-" 任意段（入边方向, 每段独立）; "$." 任意段（filter 首段 $.x = 本节点
+//	JSON 字段; title/expand 在语义层各自拒绝不支持的形态）。
 //
 // 消费方:
 //	filter  "authors.$.level = 1"  → 首段引用, 二段 JSON
@@ -34,10 +34,11 @@ func ParsePath(raw string) ([]Seg, error) {
 		return nil, errors.New("types: path: empty expression")
 	}
 	var out []Seg
-	rest, first := raw, true
+	rest := raw
 	for rest != "" {
 		seg := Seg{}
-		if first && strings.HasPrefix(rest, "<-") {
+		// "<-" 每段独立（多层入边: "<-a.<-b" = 每层都走入边; filter 首段语义不变）
+		if strings.HasPrefix(rest, "<-") {
 			seg.In = true
 			rest = rest[2:]
 		}
@@ -54,7 +55,7 @@ func ParsePath(raw string) ([]Seg, error) {
 		}
 		seg.Field = name
 		out = append(out, seg)
-		rest, first = tail, false
+		rest = tail
 	}
 	return out, nil
 }

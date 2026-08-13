@@ -241,3 +241,57 @@ func TestExpandBidirectionalKey(t *testing.T) {
 		t.Fatal("batch: in key missing")
 	}
 }
+
+// 多层展开（三层出边链 / 多层入边 / 批量）: 每层递归挂载, 方向每段独立。
+func TestExpandMultiLevel(t *testing.T) {
+	s := newFilterSvc(t)
+	root, _ := s.Create(&Node{Type: "category", Fields: Fields{"name": "根"}})
+	child, _ := s.Create(&Node{Type: "category", Fields: Fields{"name": "子", "parent": root}})
+	grand, _ := s.Create(&Node{Type: "category", Fields: Fields{"name": "孙", "parent": child}})
+	great, _ := s.Create(&Node{Type: "category", Fields: Fields{"name": "重孙", "parent": grand}})
+	art, _ := s.Create(&Node{Type: "article", Status: StatusPublished,
+		Fields: Fields{"title": "a", "categories": []any{grand}}})
+
+	// 三层出边链: 文章 → categories(grand) → parent(child) → parent(root)
+	n, err := s.ExpandPath(art, "categories.parent.parent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	l1 := n.Expand["categories"].([]*Node)
+	if len(l1) != 1 || l1[0].ID != grand {
+		t.Fatalf("level1: %v", l1)
+	}
+	l2 := l1[0].Expand["parent"].([]*Node)
+	if len(l2) != 1 || l2[0].ID != child {
+		t.Fatalf("level2: %v", l2)
+	}
+	l3 := l2[0].Expand["parent"].([]*Node)
+	if len(l3) != 1 || l3[0].ID != root {
+		t.Fatalf("level3: %v", l3)
+	}
+
+	// 多层入边: child 的 <-parent = [grand]; grand 的 <-parent = [great]
+	m, err := s.ExpandPath(child, "<-parent.<-parent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	in1 := m.Expand["<-parent"].([]*Node)
+	if len(in1) != 1 || in1[0].ID != grand {
+		t.Fatalf("in level1: %v", in1)
+	}
+	in2 := in1[0].Expand["<-parent"].([]*Node)
+	if len(in2) != 1 || in2[0].ID != great {
+		t.Fatalf("in level2: %v", in2)
+	}
+
+	// 批量三层
+	nodes, err := s.ExpandPathMany([]int64{art, child}, "categories.parent")
+	if err != nil || len(nodes) != 2 {
+		t.Fatal(err)
+	}
+	for _, x := range nodes {
+		if x.Expand["categories"] == nil && x.Expand["<-parent"] == nil {
+			t.Fatalf("batch node %d must have expansion", x.ID)
+		}
+	}
+}
