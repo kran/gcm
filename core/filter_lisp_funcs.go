@@ -182,16 +182,17 @@ func (ctx *LispCtx) through(args []lispExpr) (string, []any, error) {
 }
 
 // throughRec 递归编译穿透: 每段一层 EXISTS, 别名唯一（e{i}/t{i}）。
-// 段方向: "^" 前缀 = 入边（JOIN 按 from_node, link 反向）; 无标记 = 出边。
+// 段方向: "<-" 前缀 = 入边（与引用操作符统一符号; JOIN 按 from_node, link 反向）;
+// 无标记 = 出边。
 func (ctx *LispCtx) throughRec(segs []lispExpr, val any, i int, link string) (string, []any, error) {
 	var err error
 	segName, _ := pathOf(segs[i])
-	in := strings.HasPrefix(segName, "^")
-	segName = strings.TrimPrefix(segName, "^")
+	in := strings.HasPrefix(segName, "<-")
+	segName = strings.TrimPrefix(segName, "<-")
 	// 当前层宿主类型: 段0 = ctx.td; 更深层 = 前段的 ref 目标
 	if i > 0 {
 		prev, _ := pathOf(segs[i-1])
-		prev = strings.TrimPrefix(prev, "^")
+		prev = strings.TrimPrefix(prev, "<-")
 		to, err := ctx.refTargetType(prev)
 		if err != nil {
 			return "", nil, err
