@@ -32,7 +32,22 @@ types:
   org:
     title: name
     fields:
-      - { name: name, kind: string, required: true }
+      - { name: name, kind: string, required: true, label: 名称 }
+      - { name: brief, kind: text, label: 简介 }
+      - { name: intro, kind: richtext, label: 详细介绍 }
+      - { name: founded, kind: number, label: 成立年份 }
+      - { name: active, kind: bool, label: 是否活跃 }
+      - { name: logo, kind: image, label: Logo }
+      - { name: charter, kind: file, label: 章程文件 }
+      - { name: color, kind: color, label: 主色 }
+      - { name: partner, kind: ref, to: org, label: 合作机构 }
+      - { name: members, kind: "ref[]", to: person, label: 成员 }
+      - { name: tags, kind: array, item: { kind: string }, label: 标签 }
+      - { name: links, kind: array, item: { kind: object, fields:
+            [ { name: label, kind: string }, { name: url, kind: string } ] }, label: 链接 }
+      - { name: meta, kind: object, fields:
+            [ { name: og_title, kind: string }, { name: og_desc, kind: text } ], label: SEO }
+      - { name: scores, kind: array, item: { kind: number }, label: 评分 }
   employment:
     title: person.$.name
     fields:

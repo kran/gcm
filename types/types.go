@@ -369,9 +369,13 @@ func (t *Types) IsTree(typeName string) bool {
 }
 
 // IsRefKind 该 kind 是否引用系（ClassRef / ClassRefList）。
-// 未知 kind panic: Load 已保证字段 kind 存在, 未知即程序 bug（fail-loud,
-// 不静默 — 静默会让 ref 字段被当标量存进 fields, 数据损坏）。
+// 复合字段（array/object）返回 false: 结构语法存 fields JSON, 非引用。
+// 未知 kind panic: Load 已保证字段 kind 存在（复合字段除外）, 未知即程序
+// bug（fail-loud, 不静默 — 静默会让 ref 字段被当标量存进 fields, 数据损坏）。
 func (t *Types) IsRefKind(kind string) bool {
+	if kind == "array" || kind == "object" {
+		return false // 复合字段: 非引用, 值存 fields JSON
+	}
 	k, ok := t.kinds[kind]
 	if !ok {
 		panic(fmt.Sprintf("types: kind %q not registered", kind))
