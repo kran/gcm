@@ -132,8 +132,7 @@ export default {
         },
     },
     methods: {
-        // 控件原语名: editor（后端回填）兜底 kind（前端构造的伪 FieldDef,
-        // 如 settings 值编辑 — kind 名即原语名）
+        // 控件原语名: editor（后端回填）兜底 kind（kind 名即原语名）
         widgetOf(f) { return f.editor || f.kind },
         // 内置控件原语集合（其余 editor → 站点扩展组件动态加载）
         builtinWidgets() {
