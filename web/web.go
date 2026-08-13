@@ -19,9 +19,16 @@ import (
 
 	"github.com/kran/cho"
 	"github.com/kran/dba"
+	"github.com/kran/gcm/core/hook"
 	"github.com/kran/gcm/core"
 	"github.com/kran/gcm/core/render"
 )
+
+// HookNodeRender 节点页渲染事件（站点扩展注入渲染数据）:
+// 原型 func(ctx *CmsCtx, n *core.Node, data map[string]any) error —
+// 内置 node 路由渲染前触发, 站点往 data 里注入页面上下文/附加数据。
+// 定义在 web 包（proto 带 CmsCtx, core 不引用 web）; 总线是 core 的。
+const HookNodeRender = "web.node.render"
 
 // CmsCtx 请求上下文（富上下文: 携带站点引用, 自定义路由一行拿引擎 —
 // 不再闭包捕获 site/svc/eng 三件套）。
@@ -70,6 +77,11 @@ func New(svc *core.Service, eng *render.Engine, static string) *Site {
 	s.Cho = cho.New(func(w http.ResponseWriter, r *http.Request) *CmsCtx {
 		return &CmsCtx{BaseContext: cho.MakeBaseContext(w, r), site: s}
 	})
+	// 声明渲染事件（注册即校验签名; 站点 AddHook 前必须存在）
+	if err := svc.Hooks().Define(hook.Spec{Name: HookNodeRender,
+		Proto: func(*CmsCtx, *core.Node, map[string]any) error { return nil }}); err != nil {
+		panic("web: define HookNodeRender: " + err.Error())
+	}
 	s.mount()
 	return s
 }
@@ -152,10 +164,13 @@ func (s *Site) nodeHandler() func(ctx *CmsCtx) {
 			s.render404(ctx)
 			return
 		}
-		s.renderHTML(ctx, render.Candidates(n), map[string]any{
-			"Node": n,
-			"ID":   n.ID,
-		})
+		data := map[string]any{"Node": n, "ID": n.ID}
+		if err := s.svc.Hooks().Fire(HookNodeRender, ctx, n, data); err != nil {
+			slog.Error("node render hook failed", "path", raw, "err", err)
+			ctx.String(http.StatusInternalServerError, "500 internal server error")
+			return
+		}
+		s.renderHTML(ctx, render.Candidates(n), data)
 	}
 }
 

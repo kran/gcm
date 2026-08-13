@@ -65,4 +65,7 @@ type Node struct {
 	// 递归层级经路径表达式表达（"a.b"）: 子节点的 Expand 再挂下一层, 树形
 	// 结构天然可遍历 — 不再需要独立的 NodesOut/NodesIn 字段。
 	Expand map[string]any `db:"-" json:"expand,omitempty"`
+	// Extra 渲染期附加数据（站点 NodeData hook / 渲染层填充; 不落库）:
+	// URL 生成、高亮标记、面包屑等 — 模板统一 .Node.Extra.x 访问。
+	Extra map[string]any `db:"-" json:"extra,omitempty"`
 }
