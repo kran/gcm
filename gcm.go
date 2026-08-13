@@ -64,31 +64,20 @@ type Options struct {
 
 // App 多站点应用: HostMux 按域名分发到各站点。
 type App[T any] struct {
-	mux     *web.HostMux
-	sites   []*web.Site
+	site    *web.Site
 	options Options
 }
 
-// NewApp 按规格装配全部站点。任一站点装配失败 → 返回错误（fail-loud）。
-// 第一个 spec 是 fallback 默认站（未知域名/IP 直连落到它）。
-func NewApp[T any](opts Options, specs ...SiteSpec[T]) (*App[T], error) {
-	if len(specs) == 0 {
-		return nil, fmt.Errorf("gcm: no sites")
+// NewApp 装配**一个**站点。每个站点一个 App 实例（各自 PageData 类型 T —
+// 多站点类型不同各自 NewApp）。返回 *App[T]; Handler() 供开发者组合挂载
+// （web.HostMux 是可选组合件 — 多站由开发者自己 mux.Add 挂载）。
+func NewApp[T any](opts Options, spec SiteSpec[T]) (*App[T], error) {
+	app := &App[T]{options: opts}
+	site, err := app.build(spec)
+	if err != nil {
+		return nil, fmt.Errorf("gcm: %w", err)
 	}
-	app := &App[T]{mux: web.NewHostMux(), options: opts}
-	for i, spec := range specs {
-		site, err := app.build(spec)
-		if err != nil {
-			return nil, fmt.Errorf("gcm: site #%d: %w", i, err)
-		}
-		app.sites = append(app.sites, site)
-		if i == 0 {
-			app.mux.SetFallback(site)
-		}
-		if len(spec.Hosts) > 0 {
-			app.mux.Add(spec.Hosts, site)
-		}
-	}
+	app.site = site
 	return app, nil
 }
 
@@ -140,14 +129,14 @@ func (a *App[T]) build(spec SiteSpec[T]) (*web.Site, error) {
 	return site, nil
 }
 
-// Handler 应用入口（测试/嵌入用）。
-func (a *App[T]) Handler() http.Handler { return a.mux }
+// Handler 应用入口（测试/嵌入用）— 单站; 多站组合用 web.HostMux.Add(hosts, a.Handler())。
+func (a *App[T]) Handler() http.Handler { return a.site }
 
-// Listen 监听并服务。
+// Site 站点实例（多站组合/高级装配用）。
+func (a *App[T]) Site() *web.Site { return a.site }
+
+// Listen 监听并服务（单站直连; 多站请用 Handler + HostMux）。
 func (a *App[T]) Listen(addr string) error {
-	log.Printf("gcm: listening on %s (%d site(s))", addr, len(a.sites))
-	return http.ListenAndServe(addr, a.mux)
+	log.Printf("gcm: listening on %s", addr)
+	return http.ListenAndServe(addr, a.site)
 }
-
-// Sites 全部站点（按装配序; 第一个是 fallback）。
-func (a *App[T]) Sites() []*web.Site { return a.sites }

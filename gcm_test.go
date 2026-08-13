@@ -29,7 +29,7 @@ types:
 `)
 	tplA := filepath.Join(dir, "tplA")
 	tplB := filepath.Join(dir, "tplB")
-	app, err := NewApp(Options{}, SiteSpec[any]{
+	appA, err := NewApp(Options{}, SiteSpec[any]{
 		Hosts:     []string{"a.com"},
 		DBPath:    filepath.Join(dir, "a.db"),
 		Types:     typesA,
@@ -38,7 +38,11 @@ types:
 			svc.Create(&core.Node{Type: "article", Status: core.StatusPublished, Fields: core.Fields{"title": "A文"}})
 			return nil
 		},
-	}, SiteSpec[any]{
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	appB, err := NewApp(Options{}, SiteSpec[any]{
 		Hosts:     []string{"b.com"},
 		DBPath:    filepath.Join(dir, "b.db"),
 		Types:     typesB,
@@ -52,22 +56,20 @@ types:
 		t.Fatal(err)
 	}
 	// A 站只认识 article; B 站只认识 note（类型隔离）
-	hit := func(host, path string) int {
+	hit := func(handler http.Handler, path string) int {
 		r := httptest.NewRequest(http.MethodGet, path, nil)
-		r.Host = host
 		w := httptest.NewRecorder()
-		app.Handler().ServeHTTP(w, r)
+		handler.ServeHTTP(w, r)
 		return w.Code
 	}
 	_ = hit
 	// 通过 admin API 验证数据隔离（admin 登录后查 nodes）
 	// 简化: 用 Setup 后直接查 svc — App 不暴露 svc; 用 HTTP 验证 404 隔离
 	// 类型隔离由 types.Load 保证（note 在 A 站不存在）— 通过 /admin/types 验证
-	login := func(host string) string {
+	login := func(handler http.Handler) string {
 		r := httptest.NewRequest(http.MethodPost, "/admin/login", nil)
-		r.Host = host
 		w := httptest.NewRecorder()
-		app.Handler().ServeHTTP(w, r)
+		handler.ServeHTTP(w, r)
 		for _, c := range w.Result().Cookies() {
 			if c.Name == "gcm_admin" {
 				return c.Value
@@ -76,15 +78,19 @@ types:
 		return ""
 	}
 	_ = login
-	// fallback: 未知域名 → 第一个站点
+	// hostmux 组合: A/B 站按域名分发
+	mux := web.NewHostMux()
+	mux.Add([]string{"a.com"}, appA.Handler())
+	mux.Add([]string{"b.com"}, appB.Handler())
+	mux.SetFallback(appA.Handler())
 	r := httptest.NewRequest(http.MethodGet, "/admin/ui/", nil)
 	r.Host = "unknown.com"
 	w := httptest.NewRecorder()
-	app.Handler().ServeHTTP(w, r)
+	mux.ServeHTTP(w, r)
 	if w.Code != 200 {
 		t.Fatalf("fallback must serve site A: %d", w.Code)
 	}
-	if len(app.Sites()) != 2 {
-		t.Fatal("2 sites expected")
+	if appA.Site() == nil || appB.Site() == nil {
+		t.Fatal("sites missing")
 	}
 }
