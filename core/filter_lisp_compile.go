@@ -119,6 +119,8 @@ func sqlOp(op string) string {
 }
 
 // call 编译子表达式（注册表查找; 返回片段 + 直接参数）。
+// 函数是黑盒: 调用前后保存/恢复宿主上下文（get 等会临时切换 td/nodeRef,
+// 不得泄漏到同层后续表达式）。
 func (c *lispCompiler) call(e lispExpr) (string, []any, error) {
 	if e.head == "" {
 		return "", nil, fmt.Errorf("filter-lisp: expected call, got %v", e.atom)
@@ -127,7 +129,10 @@ func (c *lispCompiler) call(e lispExpr) (string, []any, error) {
 	if !ok {
 		return "", nil, fmt.Errorf("filter-lisp: unknown function %q", e.head)
 	}
-	return fn(e.args)
+	origTd, origRef := c.td, c.nodeRef
+	frag, args, err := fn(e.args)
+	c.td, c.nodeRef = origTd, origRef
+	return frag, args, err
 }
 
 // valueOf 原子/占位符 → 参数值。

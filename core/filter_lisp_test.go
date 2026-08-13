@@ -93,3 +93,52 @@ func errTestSlug(slug string) error {
 type testSlugErr struct{ slug string }
 
 func (e *testSlugErr) Error() string { return "slug not found: " + e.slug }
+
+// 复杂组合测试: 多层嵌套 + 穿透中间谓词 + 入边 + 集合 + 逻辑。
+// 场景: 已发布文章, 属于 root 子树, 作者是高级, 标题含"甲",
+//
+//	其分类的父分类已发布 — 全组合。
+func TestLispComplex(t *testing.T) {
+	s := newFilterSvc(t)
+	// 数据:
+	// 根(发布) → 子(发布); 根草稿 → 子草稿
+	// 甲: 挂 child, 作者张三(高级), 标题"甲-深度", views=200 → 命中
+	// 乙: 挂 childDraft, 作者张三, 标题"乙", views=50 → 分类链根是草稿, 不命中
+	root, _ := s.Create(&Node{Type: "category", Slug: "root", Status: StatusPublished, Fields: Fields{"name": "根"}})
+	child, _ := s.Create(&Node{Type: "category", Slug: "child", Status: StatusPublished, Fields: Fields{"name": "子", "parent": root}})
+	rootD, _ := s.Create(&Node{Type: "category", Slug: "rootd", Status: StatusDraft, Fields: Fields{"name": "根草"}})
+	childD, _ := s.Create(&Node{Type: "category", Slug: "childd", Status: StatusDraft, Fields: Fields{"name": "子草", "parent": rootD}})
+	zhang, _ := s.Create(&Node{Type: "person", Slug: "zhang", Fields: Fields{"name": "张三", "level": "senior"}})
+	wang, _ := s.Create(&Node{Type: "person", Slug: "wang", Fields: Fields{"name": "王五", "level": "junior"}})
+	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{
+		"title": "甲-深度分析", "featured": true, "views": float64(200),
+		"authors": []any{zhang}, "categories": []any{child}}})
+	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{
+		"title": "乙-简讯", "featured": false, "views": float64(50),
+		"authors": []any{zhang}, "categories": []any{childD}}})
+	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{
+		"title": "丙", "featured": true, "views": float64(300),
+		"authors": []any{wang}, "categories": []any{child}}})
+
+	// 复杂表达式: 命中甲（root 子树 + 作者 senior + 标题含甲 + 分类父链全发布 + views>100）
+	expr := `(and (= status 1)
+	            (in categories (subtree "root"))
+	            (get (-> authors) $.level "senior")
+	            (like $.title "%甲%")
+	            (get (-> categories) (-> parent (= status 1)) $.name "根")
+	            (> $.views 100))`
+	q := s.db.Add(`SELECT * FROM nodes WHERE ${where}`)
+	q, err := s.CompileLispInto(q, expr, "article", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rows []Node
+	if err := q.List(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Fields["title"] != "甲-深度分析" {
+		t.Fatalf("complex: %d rows", len(rows))
+	}
+	_ = rootD
+	_ = wang
+}
