@@ -205,7 +205,7 @@ export default {
         fromEditable(kind, e) {
             if (kind === 'number') return e.scalar == null || e.scalar === '' ? 0 : Number(e.scalar)
             if (kind === 'bool') return !!e.scalar
-            if (kind === 'string' || kind === 'text' || kind === 'file' || kind === 'richtext') {
+            if (kind === 'text' || kind === 'textarea' || kind === 'upload-file' || kind === 'richtext') {
                 return e.scalar == null ? '' : String(e.scalar)
             }
             if (kind === 'object') {
