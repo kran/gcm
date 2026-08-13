@@ -64,13 +64,32 @@ func (e *Engine) Render(w io.Writer, candidates []string, data any) error {
 	return fmt.Errorf("render: no template for %q (candidates: %s)", e.root, strings.Join(candidates, ", "))
 }
 
-// Candidates 节点级联候选名: node--{type}.html → node.html。
+// Candidates 节点级联候选名:
+// node--{type}--{slug}.html → node--{type}.html → node.html（viicn 专属页模式）。
+// slug 白名单校验: 非法 slug（含 / . 等）不进文件名 — 候选名经 filepath.Join
+// 拼到模板根, 防路径穿越; 非法时回落类型级。
 func Candidates(n *core.Node) []string {
-	// 类型模板候选由节点 type 推导
 	if n != nil && n.Type != "" {
+		if n.Slug != "" && safeSlug(n.Slug) {
+			return []string{"node--" + n.Type + "--" + n.Slug + ".html", "node--" + n.Type + ".html", "node.html"}
+		}
 		return []string{"node--" + n.Type + ".html", "node.html"}
 	}
 	return []string{"node.html"}
+}
+
+// safeSlug slug 是否 URL/文件名安全（字母/数字/-/_）。
+func safeSlug(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_') {
+			return false
+		}
+	}
+	return true
 }
 
 // fail 查询错误 → panic（html/template 捕获为 Execute 错误, fail-loud）。

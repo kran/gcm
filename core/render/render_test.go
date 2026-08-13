@@ -248,3 +248,40 @@ func TestPartialOrErrorNotSwallowed(t *testing.T) {
 		t.Fatal("partial execute error must not fall back silently")
 	}
 }
+
+// Candidates 三级级联: 类型+slug → 类型 → 通用; slug 非法/空回落。
+func TestCandidatesLevels(t *testing.T) {
+	if got := Candidates(&core.Node{Type: "article", Slug: "ai-industry"}); len(got) != 3 ||
+		got[0] != "node--article--ai-industry.html" || got[1] != "node--article.html" || got[2] != "node.html" {
+		t.Fatalf("3-level: %v", got)
+	}
+	if got := Candidates(&core.Node{Type: "article"}); len(got) != 2 || got[0] != "node--article.html" {
+		t.Fatalf("no slug: %v", got)
+	}
+	// 非法 slug（路径穿越面）: 回落类型级
+	if got := Candidates(&core.Node{Type: "article", Slug: "../../etc/passwd"}); len(got) != 2 || got[0] != "node--article.html" {
+		t.Fatalf("unsafe slug: %v", got)
+	}
+	if got := Candidates(nil); len(got) != 1 || got[0] != "node.html" {
+		t.Fatalf("nil: %v", got)
+	}
+}
+
+// 专属模板（node--{type}--{slug}.html）优先级最高。
+func TestCandidatesSpecificTemplate(t *testing.T) {
+	svc, dir := testSvc(t)
+	tplDir := filepath.Join(dir, "templates")
+	os.MkdirAll(tplDir, 0755)
+	os.WriteFile(filepath.Join(tplDir, "node--article--ai-industry.html"), []byte(`专属页`), 0644)
+	os.WriteFile(filepath.Join(tplDir, "node--article.html"), []byte(`类型页`), 0644)
+	os.WriteFile(filepath.Join(tplDir, "node.html"), []byte(`通用页`), 0644)
+	e := New(tplDir, svc)
+	n := &core.Node{Type: "article", Slug: "ai-industry"}
+	var sb strings.Builder
+	if err := e.Render(&sb, Candidates(n), map[string]any{}); err != nil {
+		t.Fatal(err)
+	}
+	if sb.String() != "专属页" {
+		t.Fatalf("specific template must win: %s", sb.String())
+	}
+}

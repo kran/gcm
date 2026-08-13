@@ -1,0 +1,9 @@
+{{ partial "partials/head.html" (merge (dict "Title" .Node.Fields.title) .) }}
+<main><div class="container">
+  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:20px 24px;">
+    <span style="background:#1e3a5f;color:#fff;font-size:12px;padding:2px 10px;border-radius:10px;">专属模板</span>
+    <h2 style="font-size:20px;margin:10px 0;">{{ .Node.Fields.title }}</h2>
+    {{ safeHTML .Node.Fields.body }}
+  </div>
+</div></main>
+{{ partial "partials/footer.html" . }}
