@@ -163,3 +163,20 @@ func TestDebugRenderError(t *testing.T) {
 	}
 	_ = dir
 }
+
+// NodeEnrich: 默认 url 注入（TypeDef.URL 模式 / 无声明 /node/{slug|id}）。
+func TestNodeEnrichURL(t *testing.T) {
+	s, svc := newSite(t)
+	// 无 URL 声明的类型 → /node/{slug}
+	a, _ := svc.Create(&core.Node{Type: "article", Slug: "hello", Status: core.StatusPublished,
+		Fields: core.Fields{"body": "x"}})
+	n, _ := svc.Get(a)
+	if s.nodeURL(n) != "/node/hello" {
+		t.Fatalf("default url: %s", s.nodeURL(n))
+	}
+	// 无 slug → /node/{id}
+	n.Slug = ""
+	if s.nodeURL(n) != "/node/"+strconv.FormatInt(n.ID, 10) {
+		t.Fatal("id url")
+	}
+}

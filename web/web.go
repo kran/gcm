@@ -39,6 +39,11 @@ const HookRender = "web.render"
 // 页面级数据（Page 上下文）用 HookRender。
 const HookNodeRender = "web.node.render"
 
+// HookNodeEnrich 节点数据增强事件（节点页渲染前; 默认注入 url）:
+// 原型 func(ctx *CmsCtx, n *core.Node) error — 站点 AddHook 覆盖默认 url
+// 生成或追加附加数据（n.Extra["xxx"]）。默认实现按 TypeDef.URL 生成 url。
+const HookNodeEnrich = "web.node.enrich"
+
 // CmsCtx 请求上下文（富上下文: 携带站点引用, 自定义路由一行拿引擎 —
 // 不再闭包捕获 site/svc/eng 三件套）。
 type CmsCtx struct {
@@ -114,6 +119,7 @@ func New(svc *core.Service, eng *render.Engine, static string, maker PageDataMak
 	if err := svc.Hooks().Define(
 		hook.Spec{Name: HookRender, Proto: func(*CmsCtx, map[string]any) error { return nil }},
 		hook.Spec{Name: HookNodeRender, Proto: func(*CmsCtx, *core.Node, map[string]any) error { return nil }},
+		hook.Spec{Name: HookNodeEnrich, Proto: func(*CmsCtx, *core.Node) error { return nil }},
 	); err != nil {
 		panic("web: define render hooks: " + err.Error())
 	}
@@ -141,6 +147,22 @@ func (s *Site) mount() {
 }
 
 // ── 渲染出口 ─────────────────────────────────────
+
+// nodeURL 节点 URL: 按 TypeDef.URL 模式替换（/article/{slug}）;
+// 无 URL 声明或 slug 空 → /node/{slug|id}。
+func (s *Site) nodeURL(n *core.Node) string {
+	if td, ok := s.svc.Types().Type(n.Type); ok && td.URL != "" {
+		u := strings.ReplaceAll(td.URL, "{slug}", n.Slug)
+		u = strings.ReplaceAll(u, "{id}", strconv.FormatInt(n.ID, 10))
+		if !strings.Contains(u, "{") {
+			return u
+		}
+	}
+	if n.Slug != "" {
+		return "/node/" + n.Slug
+	}
+	return "/node/" + strconv.FormatInt(n.ID, 10)
+}
 
 // renderHTML 渲染模板; 失败: Debug 显示错误页（500 + 详情）; 生产 HTML 注释。
 func (s *Site) renderHTML(ctx *CmsCtx, candidates []string, data map[string]any) {
@@ -229,6 +251,18 @@ func (s *Site) nodeHandler() func(ctx *CmsCtx) {
 			return
 		}
 		data := map[string]any{"Node": n, "ID": n.ID}
+		// 节点数据增强: 站点 hook 优先; 未注入 url 时默认按 TypeDef.URL 生成
+		if err := s.svc.Hooks().Fire(HookNodeEnrich, ctx, n); err != nil {
+			slog.Error("node enrich hook failed", "path", raw, "err", err)
+			ctx.String(http.StatusInternalServerError, "500 internal server error")
+			return
+		}
+		if n.Extra == nil {
+			n.Extra = map[string]any{}
+		}
+		if _, ok := n.Extra["url"]; !ok {
+			n.Extra["url"] = s.nodeURL(n)
+		}
 		if err := s.svc.Hooks().Fire(HookNodeRender, ctx, n, data); err != nil {
 			slog.Error("node render hook failed", "path", raw, "err", err)
 			ctx.String(http.StatusInternalServerError, "500 internal server error")
