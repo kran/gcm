@@ -3,6 +3,7 @@ package admin
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -232,5 +233,40 @@ func TestUIAndUpload(t *testing.T) {
 		if rec.Code != 200 {
 			t.Fatalf("ui asset %s: %d", p, rec.Code)
 		}
+	}
+}
+
+// nodes API 支持 filter 参数（树过滤落点）: 表达式编译 + 参数化执行。
+func TestListNodesFilter(t *testing.T) {
+	s, _ := newAdminSite(t)
+	// 建分类 + 文章（category 类型在 adminTypes 没有? 补: 用 person 当树? —
+	// 简化: article 的 authors ref 指向 person; filter authors ~ [id]）
+	p1 := authedReq(t, s, http.MethodPost, "/admin/nodes?type=person",
+		map[string]any{"fields": map[string]any{"name": "张三"}})
+	var p1ID int64
+	if err := json.Unmarshal(p1.Body.Bytes(), &struct{ ID *int64 }{&p1ID}); err != nil || (p1.Code != 200 && p1.Code != 201) {
+		t.Fatalf("create person: %d %s", p1.Code, p1.Body.String())
+	}
+	authedReq(t, s, http.MethodPost, "/admin/nodes?type=article",
+		map[string]any{"fields": map[string]any{"body": "x", "authors": []any{p1ID}}})
+	authedReq(t, s, http.MethodPost, "/admin/nodes?type=article",
+		map[string]any{"fields": map[string]any{"body": "y"}})
+
+	// filter 查询: authors ~ [id]
+	got := authedReq(t, s, http.MethodGet,
+		fmt.Sprintf("/admin/nodes?type=article&filter=authors%%20~%%20%%5B%d%%5D", p1ID), nil)
+	var out struct {
+		Items []core.Node `json:"items"`
+	}
+	if err := json.Unmarshal(got.Body.Bytes(), &out); err != nil || got.Code != 200 {
+		t.Fatalf("filter list: %d %s", got.Code, got.Body.String())
+	}
+	if len(out.Items) != 1 {
+		t.Fatalf("filter list: %d items", len(out.Items))
+	}
+	// 非法 filter → 400
+	bad := authedReq(t, s, http.MethodGet, "/admin/nodes?type=article&filter=authors~", nil)
+	if bad.Code != 400 {
+		t.Fatalf("bad filter must 400, got %d", bad.Code)
 	}
 }

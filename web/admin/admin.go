@@ -39,7 +39,7 @@ func (b *backend) internal(ctx *web.CmsCtx, err error) {
 
 // bad 客户端错误（校验/参数）: 直接透传, 前端表单回显。
 func (b *backend) bad(ctx *web.CmsCtx, err error) {
-	b.bad(ctx, err)
+	ctx.Error(http.StatusBadRequest, err.Error())
 }
 
 // ── UI 静态 + 上传 ────────────────────────────────
@@ -217,7 +217,26 @@ func (b *backend) listNodes(ctx *web.CmsCtx) {
 		ctx.Error(http.StatusBadRequest, "type required")
 		return
 	}
-	list, total, err := b.core.List(typ, -1, page, size)
+	// filter 参数: 完整查询能力（树过滤/任意字段筛选）— 表达式经 filter 引擎
+	// 编译 + 参数化, 复用 ListFiltered 链式分段
+	var list []core.Node
+	var total int64
+	var err error
+	if filter := strings.TrimSpace(ctx.Query("filter")); filter != "" {
+		cf, cerr := b.core.CompileFilter(filter)
+		if cerr != nil {
+			b.bad(ctx, cerr)
+			return
+		}
+		where, args, cerr := b.core.BuildFilter(cf, typ, nil)
+		if cerr != nil {
+			b.bad(ctx, cerr)
+			return
+		}
+		list, total, err = b.core.ListFiltered(typ, where, args, page, size)
+	} else {
+		list, total, err = b.core.List(typ, -1, page, size)
+	}
 	if err != nil {
 		b.internal(ctx, err)
 		return

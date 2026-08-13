@@ -39,6 +39,9 @@ const (
 	tkNumber
 	tkBool
 	tkPlaceholder
+	tkLBracket
+	tkRBracket
+	tkComma
 	tkEOF
 )
 
@@ -96,6 +99,15 @@ func lex(src string) ([]token, error) {
 			out = append(out, token{tkOp, op, line})
 		case c == '~':
 			out = append(out, token{tkOp, "~", line})
+			i++
+		case c == '[':
+			out = append(out, token{tkLBracket, "[", line})
+			i++
+		case c == ']':
+			out = append(out, token{tkRBracket, "]", line})
+			i++
+		case c == ',':
+			out = append(out, token{tkComma, ",", line})
 			i++
 		case c == '.':
 			out = append(out, token{tkDot, ".", line})
@@ -366,6 +378,41 @@ func (p *parser) parseValue() (any, error) {
 	case tkPlaceholder:
 		p.next()
 		return placeholder{name: t.text}, nil
+	case tkLBracket:
+		// 数组字面量 [1, 2, 3] — 元素: 数字 / {:占位符}（id 集合, ~ 专用）
+		p.next()
+		var items []any
+		if p.cur().kind == tkRBracket {
+			p.next()
+			return items, nil
+		}
+		for {
+			t := p.cur()
+			switch t.kind {
+			case tkNumber:
+				p.next()
+				f, err := strconv.ParseFloat(t.text, 64)
+				if err != nil {
+					return nil, fmt.Errorf("filter: line %d: invalid number %q", t.line, t.text)
+				}
+				items = append(items, f)
+			case tkPlaceholder:
+				p.next()
+				items = append(items, placeholder{name: t.text})
+			default:
+				return nil, fmt.Errorf("filter: line %d: array elements must be numbers or {:placeholders}, got %q", t.line, t.text)
+			}
+			if p.cur().kind == tkComma {
+				p.next()
+				continue
+			}
+			break
+		}
+		if p.cur().kind != tkRBracket {
+			return nil, fmt.Errorf("filter: line %d: expected ']', got %q", p.cur().line, p.cur().text)
+		}
+		p.next()
+		return items, nil
 	default:
 		return nil, fmt.Errorf("filter: line %d: expected value, got %q", t.line, t.text)
 	}
@@ -546,6 +593,20 @@ func (s *Service) refCmp(c *cmpExpr, f types.FieldDef, val any, params map[strin
 		return "", nil, fmt.Errorf("filter: ref field %q supports ~ or =, got %q", f.Name, c.op)
 	}
 	ph := func() string { n := *idx; *idx++; return fmt.Sprintf("#{%d}", n) }
+	exp := func() string { n := *idx; *idx++; return fmt.Sprintf("#{%d|expand}", n) }
+	// 数组值: id 集合（~ 专用）→ IN (#{n|expand})
+	if arr, ok := val.([]any); ok {
+		if c.op != "~" {
+			return "", nil, fmt.Errorf("filter: array value only valid with ~, got %q", c.op)
+		}
+		if len(arr) == 0 {
+			return "", nil, fmt.Errorf("filter: empty array for ref field %q", f.Name)
+		}
+		if c.in {
+			return "EXISTS(SELECT 1 FROM edges WHERE field = " + ph() + " AND to_node = nodes.id AND from_node IN (" + exp() + "))", []any{f.Name, arr}, nil
+		}
+		return "EXISTS(SELECT 1 FROM edges WHERE field = " + ph() + " AND from_node = nodes.id AND to_node IN (" + exp() + "))", []any{f.Name, arr}, nil
+	}
 	// 字段名 bind 参数化（field 是值比较, 不拼字符串）
 	if c.op == "" && c.in {
 		return "EXISTS(SELECT 1 FROM edges WHERE field = " + ph() + " AND to_node = nodes.id)", []any{f.Name}, nil
@@ -616,14 +677,29 @@ func (s *Service) refThroughCmp(c *cmpExpr, f types.FieldDef, val any, params ma
 		" WHERE e.field = " + ph() + " AND " + link + " AND " + cond + ")", args, nil
 }
 
-// valueParam 值/占位符 → 参数值。
+// valueParam 值/占位符/数组 → 参数值（数组元素逐个解析占位符）。
 func valueParam(v any, params map[string]any) (any, error) {
-	if p, ok := v.(placeholder); ok {
-		val, ok := params[p.name]
+	switch t := v.(type) {
+	case placeholder:
+		val, ok := params[t.name]
 		if !ok {
-			return nil, fmt.Errorf("filter: placeholder {: %s} not bound", p.name)
+			return nil, fmt.Errorf("filter: placeholder {: %s} not bound", t.name)
 		}
 		return val, nil
+	case []any:
+		out := make([]any, len(t))
+		for i, item := range t {
+			if p, ok := item.(placeholder); ok {
+				val, ok := params[p.name]
+				if !ok {
+					return nil, fmt.Errorf("filter: placeholder {: %s} not bound", p.name)
+				}
+				out[i] = val
+			} else {
+				out[i] = item
+			}
+		}
+		return out, nil
 	}
 	return v, nil
 }

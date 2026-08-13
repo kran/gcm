@@ -16,6 +16,25 @@
       </div>
     </div>
 
+    <!-- 树过滤栏（当前类型有指向树结构的 ref 字段时显示） -->
+    <div v-if="filterTree.def" class="nodes-tree" style="width:180px;">
+      <div class="nodes-tree-header">
+        <span style="font-weight:600;font-size:14px;">按{{ filterTree.label }}过滤</span>
+        <el-button v-if="filterTree.active" link type="primary" size="small" @click="clearTreeFilter">清除</el-button>
+      </div>
+      <div class="type-list">
+        <div class="type-item" :class="{ active: filterTree.active === 0 }" @click="clearTreeFilter">
+          <span>全部</span>
+        </div>
+        <div v-for="n in filterTree.nodes" :key="n.id" class="type-item tree-node"
+             :class="{ active: filterTree.active === n.id }"
+             :style="{ 'padding-left': (treeDepth(n) * 12 + 8) + 'px' }"
+             @click="onTreeClick(n)">
+          <span>{{ titleOf(n) }}</span>
+        </div>
+      </div>
+    </div>
+
     <!-- 右侧列表 -->
     <div class="nodes-list">
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
@@ -161,6 +180,7 @@ export default {
             treeMode: false,
             treeNodes: [],
             parentField: 'parent',
+            filterTree: { def: null, field: '', label: '', nodes: [], active: 0, depthMap: {} },
             query: { type: '', status: null, q: '', page: 1, size: 20 },
             dialog: { visible: false, isEdit: false, id: 0, def: null, saving: false, form: emptyForm() },
             expandDialog: { visible: false, loading: false, node: null, fields: [] },
@@ -185,6 +205,7 @@ export default {
             this.query.page = 1
             const def = this.typeDefs[t] || {}
             this.treeMode = def.view === 'tree'
+            this.setupFilterTree(def)
             if (this.treeMode) this.loadTree()
             else this.refresh()
         },
@@ -203,6 +224,62 @@ export default {
                 this.treeNodes = this.buildTree(res.items || [], this.parentField)
             } finally { this.loading = false }
         },
+        // 树过滤: 当前类型的 ref 字段指向"有树结构"类型时, 提供按树过滤。
+        // 点击树节点 → DFS 子树 id 集合 → filter "{field} ~ [ids]" → 刷新列表。
+        async setupFilterTree(def) {
+            this.filterTree = { def: null, field: '', label: '', nodes: [], active: 0, depthMap: {} }
+            if (!def) return
+            const name = def.name
+            for (const f of def.fields || []) {
+                if (!(f.kind === 'ref' || f.kind === 'ref[]')) continue
+                const tdef = this.typeDefs[f.to]
+                if (tdef && this.selfRefField(tdef)) {
+                    this.filterTree = { def: tdef, field: f.name, label: f.label || f.name, nodes: [], active: 0, depthMap: {} }
+                    this.loadFilterTree(f.to)
+                    return // 第一个树引用字段
+                }
+            }
+        },
+        async loadFilterTree(typeName) {
+            try {
+                const res = await window.$api.get('/admin/tree', { type: typeName })
+                const pf = this.selfRefField(this.filterTree.def) || 'parent'
+                const roots = this.buildTree(res.items || [], pf)
+                const depthMap = {}
+                const walk = (nodes, depth) => {
+                    nodes.forEach(n => { depthMap[n.id] = depth; walk(n.children || [], depth + 1) })
+                }
+                walk(roots, 0)
+                this.filterTree.nodes = roots
+                this.filterTree.depthMap = depthMap
+            } catch (_) {}
+        },
+        // 点击树节点: 子树集合 → filter 刷新列表
+        onTreeClick(n) {
+            if (this.filterTree.active === n.id) return
+            this.filterTree.active = n.id
+            const ids = this.collectSubtree(n)
+            this.query.filter = this.filterTree.field + ' ~ [' + ids.join(',') + ']'
+            this.query.page = 1
+            this.refresh()
+        },
+        clearTreeFilter() {
+            if (this.filterTree.active === 0 && !this.query.filter) return
+            this.filterTree.active = 0
+            this.query.filter = ''
+            this.query.page = 1
+            this.refresh()
+        },
+        collectSubtree(n) {
+            const ids = [n.id]
+            const walk = (node) => {
+                ;(node.children || []).forEach(c => { ids.push(c.id); walk(c) })
+            }
+            walk(n)
+            return ids
+        },
+        treeDepth(n) { return this.filterTree.depthMap[n.id] || 0 },
+
         // 平铺节点列表 → 树（无 parent / parent 缺失 = 根）
         buildTree(items, parentField) {
             const map = {}
@@ -226,6 +303,7 @@ export default {
                 const params = { type: this.query.type, page: this.query.page, size: this.query.size }
                 if (this.query.status !== null && this.query.status !== '') params.status = this.query.status
                 if (this.query.q) params.q = this.query.q
+                if (this.query.filter) params.filter = this.query.filter
                 const res = await window.$api.nodes(params)
                 this.rows = res.items || []
                 this.total = res.total || 0

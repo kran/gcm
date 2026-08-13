@@ -7,7 +7,7 @@ types:
     icon: FolderOpened
     fields:
       - { name: name, kind: string, required: true, label: 名称 }
-      - { name: parent, kind: ref, to: category, transitive: true, }
+      - { name: parent, kind: ref, to: category, transitive: true, label: 父级}
   article:
     url: /article/{slug}
     search: true

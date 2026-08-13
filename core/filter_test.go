@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -308,4 +309,54 @@ func TestFilterEdgeEscape(t *testing.T) {
 		t.Fatalf("escaped value: %v", args)
 	}
 	_ = where
+}
+
+// 数组字面量: categories ~ [ids] — 子树过滤（树节点 DFS 集合的落点）。
+func TestFilterArrayRef(t *testing.T) {
+	s := newFilterSvc(t)
+	// 分类树: 根1 → 子2; 根3
+	c1, _ := s.Create(&Node{Type: "category", Fields: Fields{"name": "根1"}})
+	c2, _ := s.Create(&Node{Type: "category", Fields: Fields{"name": "子2", "parent": c1}})
+	c3, _ := s.Create(&Node{Type: "category", Fields: Fields{"name": "根3"}})
+	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "a", "categories": []any{c2}}})
+	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "b", "categories": []any{c3}}})
+	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "c"}})
+
+	// 子树集合 [c1, c2] → a（c2 的文章）命中; b/c 不命中
+	cf, err := s.CompileFilter(fmt.Sprintf(`categories ~ [%d, %d]`, c1, c2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	where, args, err := s.BuildFilter(cf, "article", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, _, err := s.ListFiltered("article", where, args, 1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].Fields["title"] != "a" {
+		t.Fatalf("array ref: %d %v", len(list), list)
+	}
+
+	// 占位符数组: categories ~ {:ids}
+	cf2, _ := s.CompileFilter(`categories ~ {:ids}`)
+	where2, args2, err := s.BuildFilter(cf2, "article", map[string]any{"ids": []any{c2, c1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	list2, _, _ := s.ListFiltered("article", where2, args2, 1, 10)
+	if len(list2) != 1 {
+		t.Fatalf("placeholder array: %d", len(list2))
+	}
+
+	// 校验: 数组 + 非 ~ 拒绝; 空数组拒绝
+	cf3, _ := s.CompileFilter(`categories = [1, 2]`)
+	if _, _, err := s.BuildFilter(cf3, "article", nil); err == nil {
+		t.Fatal("array with = must fail")
+	}
+	cf4, _ := s.CompileFilter(`categories ~ []`)
+	if _, _, err := s.BuildFilter(cf4, "article", nil); err == nil {
+		t.Fatal("empty array must fail")
+	}
 }
