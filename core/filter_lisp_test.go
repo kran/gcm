@@ -142,3 +142,42 @@ func TestLispComplex(t *testing.T) {
 	_ = rootD
 	_ = wang
 }
+
+// 目标比较不止 =: like / >= / != 全部可作 get 目标（表达式形态）;
+// 原子形态 (get 段... 字段 值) 是 = 的糖。
+func TestLispGetTargetCmp(t *testing.T) {
+	s := newFilterSvc(t)
+	child, _ := s.Create(&Node{Type: "category", Slug: "child", Fields: Fields{"name": "技术动态"}})
+	zhang, _ := s.Create(&Node{Type: "person", Slug: "zhang", Fields: Fields{"name": "张三", "level": "senior"}})
+	wang, _ := s.Create(&Node{Type: "person", Slug: "wang", Fields: Fields{"name": "王五", "level": "mid"}})
+	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{
+		"title": "甲", "views": float64(200), "authors": []any{zhang}, "categories": []any{child}}})
+	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{
+		"title": "乙", "views": float64(50), "authors": []any{wang}, "categories": []any{child}}})
+
+	exec := func(expr string) int {
+		t.Helper()
+		q := s.db.Add(`SELECT * FROM nodes WHERE ${where}`)
+		q, err := s.CompileLispInto(q, expr, "article", nil)
+		if err != nil {
+			t.Fatalf("compile %q: %v", expr, err)
+		}
+		var rows []Node
+		if err := q.List(&rows); err != nil {
+			t.Fatalf("exec %q: %v", expr, err)
+		}
+		return len(rows)
+	}
+	if n := exec(`(get (-> authors) (like $.name "%三%"))`); n != 1 {
+		t.Fatalf("like target: %d", n)
+	}
+	if n := exec(`(get (-> authors) (>= $.level "mid"))`); n != 2 {
+		t.Fatalf(">= target: %d", n)
+	}
+	if n := exec(`(get (-> authors) (!= $.level "senior"))`); n != 1 {
+		t.Fatalf("!= target: %d", n)
+	}
+	if n := exec(`(get (-> authors) $.level "senior")`); n != 1 {
+		t.Fatalf("atomic = target: %d", n)
+	}
+}
