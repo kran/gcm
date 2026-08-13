@@ -180,7 +180,7 @@ export default {
         },
         // 非 object 数组元素包成单字段表单复用渲染
         elemAsField(f) {
-            const item = f.item || { kind: 'string' }
+            const item = f.item || { kind: 'text' }
             return { name: 'v', kind: item.kind, item: item.item, fields: item.fields }
         },
         // v-for 里的 ref 是数组 (Vue 3): $refs['file-x'] 是 [el]
