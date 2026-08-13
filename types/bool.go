@@ -8,7 +8,6 @@ type boolKind struct{}
 // KindBool kind 名; WidgetSwitch 编辑控件原语（各 kind 自包含定义 — 加新 kind
 // 只动一个文件）。
 const KindBool = "bool"
-const WidgetSwitch = Widget("bool")
 
 func (boolKind) Name() string { return KindBool }
 func (boolKind) Validate(v any) error {
@@ -22,5 +21,4 @@ func (boolKind) IsEmpty(v any) bool { _, ok := v.(bool); return !ok }
 func (boolKind) ValidateField(t *Types, typeName string, f FieldDef, defs map[string]TypeDef) error {
 	return rejectRefAttrs(typeName, f)
 }
-func (boolKind) Class() Class   { return ClassField }
-func (boolKind) Editor() Widget { return WidgetSwitch }
+func (boolKind) Class() Class { return ClassField }

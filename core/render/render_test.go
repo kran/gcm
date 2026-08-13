@@ -22,7 +22,7 @@ types:
       - { name: authors, kind: "ref[]", to: person, inverse: articles }
   person:
     fields:
-      - { name: name, kind: string, required: true }
+      - { name: name, kind: text, required: true }
       - { name: articles, kind: "ref[]", to: article, inverse: authors }
 `
 

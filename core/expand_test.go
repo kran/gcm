@@ -11,21 +11,21 @@ const expandPathTypes = `
 types:
   category:
     fields:
-      - { name: name, kind: string }
+      - { name: name, kind: text }
       - { name: broader, kind: ref, to: category }
   person:
     fields:
-      - { name: name, kind: string }
+      - { name: name, kind: text }
   org:
     fields:
-      - { name: name, kind: string }
+      - { name: name, kind: text }
   employment:
     fields:
       - { name: person, kind: ref, to: person }
       - { name: org, kind: ref, to: org }
   article:
     fields:
-      - { name: title, kind: string }
+      - { name: title, kind: text }
       - { name: authors, kind: "ref[]", to: person }
       - { name: categories, kind: "ref[]", to: category }
       - { name: employment, kind: "ref[]", to: employment }

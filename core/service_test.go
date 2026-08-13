@@ -19,15 +19,15 @@ types:
   article:
     fields:
       - { name: body, kind: richtext, required: true }
-      - { name: cover, kind: image }
+      - { name: cover, kind: upload-image }
       - { name: authors, kind: "ref[]", to: person, inverse: articles }
   person:
     fields:
-      - { name: name, kind: string, required: true }
+      - { name: name, kind: text, required: true }
       - { name: articles, kind: "ref[]", to: article, inverse: authors }
   category:
     fields:
-      - { name: name, kind: string, required: true }
+      - { name: name, kind: text, required: true }
       - { name: parent, kind: ref, to: category }
 `
 
@@ -241,15 +241,15 @@ types:
   article:
     title: title
     fields:
-      - { name: title, kind: string, required: true }
+      - { name: title, kind: text, required: true }
       - { name: body, kind: richtext }
   person:
     title: name
     fields:
-      - { name: name, kind: string, required: true }
+      - { name: name, kind: text, required: true }
   org:
     fields:
-      - { name: name, kind: string }
+      - { name: name, kind: text }
 `)
 	s := New(testDB(t), ts)
 	aid, _ := s.Create(&Node{Type: "article", Fields: Fields{"title": "标题甲", "body": "x"}})
@@ -334,12 +334,12 @@ types:
   person:
     title: name
     fields:
-      - { name: name, kind: string }
+      - { name: name, kind: text }
   employment:
     title: person.$.name
     fields:
       - { name: person, kind: ref, to: person }
-      - { name: role, kind: string }
+      - { name: role, kind: text }
 `))
 	li, err := s.Create(&Node{Type: "person", Fields: Fields{"name": "李志起"}})
 	if err != nil {

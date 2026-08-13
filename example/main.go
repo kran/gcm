@@ -34,10 +34,9 @@ var uiExtras embed.FS // 站点扩展控件（admin 字段控件原语, 运行�
 // 前端 FieldRenderer 遇未知原语自动加载 — 两处两语言但各自独立可扩展。
 type colorKind struct{}
 
-func (colorKind) Name() string         { return "color" }
-func (colorKind) Class() types.Class   { return types.ClassField }
-func (colorKind) Editor() types.Widget { return "color" } // 新原语名（前端动态加载）
-func (colorKind) IsEmpty(v any) bool   { s, _ := v.(string); return s == "" }
+func (colorKind) Name() string       { return "color" }
+func (colorKind) Class() types.Class { return types.ClassField }
+func (colorKind) IsEmpty(v any) bool { s, _ := v.(string); return s == "" }
 func (colorKind) Validate(v any) error {
 	s, ok := v.(string)
 	if !ok {

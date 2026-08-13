@@ -10,19 +10,19 @@ const filterTypes = `
 types:
   category:
     fields:
-      - { name: name, kind: string }
+      - { name: name, kind: text }
       - { name: parent, kind: ref, to: category }
   person:
     title: name
     search: true
     fields:
-      - { name: name, kind: string, required: true }
-      - { name: level, kind: string }
+      - { name: name, kind: text, required: true }
+      - { name: level, kind: textarea }
   article:
     title: title
     search: true
     fields:
-      - { name: title, kind: string, required: true }
+      - { name: title, kind: text, required: true }
       - { name: body, kind: richtext }
       - { name: featured, kind: bool }
       - { name: views, kind: number }

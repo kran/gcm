@@ -25,7 +25,7 @@ types:
       - { name: authors, kind: "ref[]", to: person }
   person:
     fields:
-      - { name: name, kind: string, required: true }
+      - { name: name, kind: text, required: true }
 `
 
 func newSite(t *testing.T) (*Site, *core.Service) {

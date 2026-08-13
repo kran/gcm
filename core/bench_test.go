@@ -23,17 +23,17 @@ const benchTypes = `
 types:
   category:
     fields:
-      - { name: name, kind: string }
+      - { name: name, kind: textarea }
       - { name: parent, kind: ref, to: category, transitive: true }
   article:
     fields:
-      - { name: title, kind: string, required: true }
+      - { name: title, kind: textarea, required: true }
       - { name: body, kind: richtext }
       - { name: authors, kind: "ref[]", to: person }
       - { name: categories, kind: "ref[]", to: category }
   person:
     fields:
-      - { name: name, kind: string, required: true }
+      - { name: name, kind: textarea, required: true }
 `
 
 // benchSeed 建 10w nodes + 50w edges（SQL 批量直插, 绕过 API 校验,

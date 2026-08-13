@@ -29,7 +29,7 @@ types:
   person:
     title: name
     fields:
-      - { name: name, kind: string, required: true }
+      - { name: name, kind: text, required: true }
 `
 
 func newAdminSite(t *testing.T) (*web.Site, *core.Service) {

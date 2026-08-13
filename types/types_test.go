@@ -15,30 +15,30 @@ types:
     search: true
     fields:
       - { name: body, kind: richtext, required: true }
-      - { name: cover, kind: image }
+      - { name: cover, kind: upload-image }
       - { name: authors, kind: "ref[]", to: person }
       - { name: related, kind: "ref[]", to: article, symmetric: true }
       - { name: categories, kind: "ref[]", to: category, transitive: true }
   category:
     url: /category/{slug}
     fields:
-      - { name: name, kind: string, required: true }
+      - { name: name, kind: text, required: true }
       - { name: parent, kind: ref, to: category, transitive: true }
 
-      - { name: banner, kind: image }
+      - { name: banner, kind: upload-image }
   person:
     fields:
-      - { name: name, kind: string, required: true }
+      - { name: name, kind: text, required: true }
       - { name: articles, kind: "ref[]", to: article }
       - { name: employment, kind: "ref[]", to: employment }
   org:
     fields:
-      - { name: name, kind: string, required: true }
+      - { name: name, kind: text, required: true }
   employment:
     fields:
       - { name: person, kind: ref, to: person, required: true }
       - { name: org, kind: ref, to: org, required: true }
-      - { name: role, kind: string }
+      - { name: role, kind: text }
 `
 
 func TestLoadValid(t *testing.T) {
@@ -81,8 +81,8 @@ func TestLoadInvalid(t *testing.T) {
 		{"type name", base + "      - { name: body, kind: richtext }\n  BadType:\n    fields: []", "must match"},
 		{"reserved", base + "      - { name: body, kind: richtext }\n  node:\n    fields: []", "reserved"},
 		{"unknown kind", base + "      - { name: body, kind: banana }", "unknown kind"},
-		{"bad field name", base + "      - { name: 'Bad-Name', kind: string }", "must match"},
-		{"duplicate field", base + "      - { name: body, kind: string }\n      - { name: body, kind: text }", "duplicate"},
+		{"bad field name", base + "      - { name: 'Bad-Name', kind: textarea }", "must match"},
+		{"duplicate field", base + "      - { name: body, kind: textarea }\n      - { name: body, kind: textarea }", "duplicate"},
 		{"ref no to", base + "      - { name: authors, kind: ref }", "requires to"},
 		{"ref to undefined", base + "      - { name: authors, kind: ref, to: ghost }", "not defined"},
 		{"algebra mutual", base + "      - { name: r, kind: \"ref[]\", to: article, symmetric: true, transitive: true }",
@@ -192,7 +192,6 @@ func (dateKind) Validate(v any) error {
 }
 func (dateKind) IsEmpty(v any) bool { s, ok := v.(string); return !ok || s == "" }
 func (dateKind) Class() Class       { return ClassField }
-func (dateKind) Editor() Widget     { return WidgetInput } // 复用现有原语 — 自定义 kind 后台可编辑
 func (dateKind) ValidateField(t *Types, typeName string, f FieldDef, defs map[string]TypeDef) error {
 	return rejectRefAttrs(typeName, f)
 }
@@ -252,7 +251,7 @@ types:
   category:
     view: tree
     fields:
-      - { name: name, kind: string }
+      - { name: name, kind: text }
       - { name: parent, kind: ref, to: category }
 `)); err != nil {
 		t.Fatalf("valid tree: %v", err)
@@ -267,7 +266,7 @@ types:
   article:
     view: tree
     fields:
-      - { name: title, kind: string }
+      - { name: title, kind: text }
 `))
 	if err == nil || !strings.Contains(err.Error(), "requires a self-ref") {
 		t.Fatalf("tree without self-ref must fail: %v", err)
@@ -278,7 +277,7 @@ types:
 types:
   person:
     fields:
-      - { name: name, kind: string }
+      - { name: name, kind: text }
 `)); err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +293,7 @@ types:
   person:
     title: name
     fields:
-      - { name: name, kind: string }
+      - { name: name, kind: text }
   employment:
     title: person.$.name
     fields:
@@ -303,19 +302,19 @@ types:
 	bad := []struct{ name, raw string }{
 		{"ref 不存在", `
 types:
-  person: { fields: [ { name: name, kind: string } ] }
+  person: { fields: [ { name: name, kind: text } ] }
   employment:
     title: ghost.$.name
     fields: [ { name: person, kind: ref, to: person } ]`},
 		{"第一段非 ref", `
 types:
-  person: { fields: [ { name: name, kind: string } ] }
+  person: { fields: [ { name: name, kind: text } ] }
   employment:
     title: role.$.name
-    fields: [ { name: role, kind: string } ]`},
+    fields: [ { name: role, kind: text } ]`},
 		{"目标字段不存在", `
 types:
-  person: { fields: [ { name: name, kind: string } ] }
+  person: { fields: [ { name: name, kind: text } ] }
   employment:
     title: person.$.ghost
     fields: [ { name: person, kind: ref, to: person } ]`},
@@ -327,7 +326,7 @@ types:
     fields: [ { name: person, kind: ref, to: person } ]`},
 		{"第二段既非 $ 也非列", `
 types:
-  person: { fields: [ { name: name, kind: string } ] }
+  person: { fields: [ { name: name, kind: text } ] }
   employment:
     title: person.xyz
     fields: [ { name: person, kind: ref, to: person } ]`},
@@ -366,11 +365,11 @@ types:
   page:
     title: title
     fields:
-      - { name: title, kind: string }
-      - { name: tags, kind: array, item: { kind: string } }
+      - { name: title, kind: text }
+      - { name: tags, kind: array, item: { kind: textarea } }
       - { name: nav, kind: array, item: { kind: object, fields:
-            [ { name: label, kind: string }, { name: url, kind: string } ] } }
-      - { name: meta, kind: object, fields: [ { name: og_title, kind: string } ] }
+            [ { name: label, kind: text }, { name: url, kind: text } ] } }
+      - { name: meta, kind: object, fields: [ { name: og_title, kind: textarea } ] }
 `
 	ts := New()
 	if err := ts.Load([]byte(raw)); err != nil {
@@ -412,9 +411,9 @@ func TestCompositeCmxSemantics(t *testing.T) {
 types:
   page:
     fields:
-      - { name: tags, kind: strings }  # 简写 → array<string>
+      - { name: tags, kind: strings }  # 简写 → array<string>（kind 改名后为 array<text>）
       - { name: meta, kind: object, fields:
-            [ { name: og_title, kind: string, required: true } ] }
+            [ { name: og_title, kind: text, required: true } ] }
 `
 	ts := New()
 	if err := ts.Load([]byte(raw)); err != nil {
@@ -422,8 +421,8 @@ types:
 	}
 	// strings 归一: kind 变 array
 	td, _ := ts.Type("page")
-	if td.Fields[0].Kind != "array" || td.Fields[0].Item == nil || td.Fields[0].Item.Kind != "string" {
-		t.Fatalf("strings must normalize to array<string>: %+v", td.Fields[0])
+	if td.Fields[0].Kind != "array" || td.Fields[0].Item == nil || td.Fields[0].Item.Kind != "text" {
+		t.Fatalf("strings must normalize to array<text>: %+v", td.Fields[0])
 	}
 	// object 子字段 required 缺 → 拒绝
 	if err := ts.ValidateFields("page", map[string]any{"tags": []any{"a"}, "meta": map[string]any{}}); err == nil {

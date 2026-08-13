@@ -14,9 +14,9 @@ type Kind interface {
 	IsEmpty(v any) bool
 	// Class 分类: 值存哪、是什么形态 — kind 自己的声明, 引擎零推断。
 	Class() Class
-	// Editor 编辑控件原语（Widget 有限枚举）: 新 kind 复用现有原语 → 前端
-	// 零改动; 全新原语 → 站点挂载组件路由（/admin/ui-extras/{widget}.vue）。
-	Editor() Widget
+	// 控件名 = kind 名（约定: 前端按 kind 名渲染; 未知 kind 从
+	// /admin/ui-extras/{kind}.vue 动态加载 — 新 kind 一处一语言）。
+	// 无 Editor() — kind 名即控件名（B 方案: 内置 kind 名对齐前端控件）。
 	// ValidateField 字段定义校验: 本 kind 对 FieldDef 的约束。
 	// 通用校验（类型名/字段名/重复/kind 存在）由容器做;
 	// 这里只做 kind 特有规则（标量禁代数 / ref 要 to / 代数互斥）。

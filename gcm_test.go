@@ -18,14 +18,14 @@ types:
   article:
     title: title
     fields:
-      - { name: title, kind: string }
+      - { name: title, kind: text }
 `)
 	typesB := []byte(`
 types:
   note:
     title: title
     fields:
-      - { name: title, kind: string }
+      - { name: title, kind: text }
 `)
 	tplA := filepath.Join(dir, "tplA")
 	tplB := filepath.Join(dir, "tplB")

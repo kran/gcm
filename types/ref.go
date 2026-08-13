@@ -6,7 +6,6 @@ type refKind struct{}
 // KindRef kind 名; WidgetEntityPicker 编辑控件原语（各 kind 自包含定义 — 加新 kind
 // 只动一个文件）。
 const KindRef = "ref"
-const WidgetEntityPicker = Widget("ref")
 
 func (refKind) Name() string { return KindRef }
 func (refKind) Validate(v any) error {
@@ -20,5 +19,4 @@ func (refKind) IsEmpty(v any) bool { _, err := ToID(v); return err != nil }
 func (refKind) ValidateField(t *Types, typeName string, f FieldDef, defs map[string]TypeDef) error {
 	return validateRefField(t, typeName, f, defs)
 }
-func (refKind) Class() Class   { return ClassRef }
-func (refKind) Editor() Widget { return WidgetEntityPicker }
+func (refKind) Class() Class { return ClassRef }

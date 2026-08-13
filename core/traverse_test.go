@@ -10,7 +10,7 @@ const traverseTypes = `
 types:
   category:
     fields:
-      - { name: name, kind: string }
+      - { name: name, kind: textarea }
       - { name: parent, kind: ref, to: category, transitive: true, inverse: children }
       - { name: children, kind: "ref[]", to: category }
       - { name: synonym, kind: "ref[]", to: category, equivalence: true }

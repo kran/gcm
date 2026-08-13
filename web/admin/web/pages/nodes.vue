@@ -119,7 +119,7 @@
     <!-- 新建/编辑 -->
     <el-dialog v-model="dialog.visible" :title="dialog.isEdit ? '编辑 #' + dialog.id : '新建 ' + query.type"
                width="80vw">
-      <el-form label-width="90px">
+      <el-form>
         <el-form-item label="slug">
           <el-input v-model="dialog.form.slug" placeholder="URL 段（留空 = /node/{id}）" />
         </el-form-item>

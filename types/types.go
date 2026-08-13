@@ -37,11 +37,10 @@ func (t TypeDef) TemplateCandidates() []string {
 // symmetric / transitive / equivalence。
 // 边本身双向（OutRefs/InRefs 引擎原语）— 无需 reverse/inverse 声明。
 type FieldDef struct {
-	Name   string `yaml:"name" json:"name"`
-	Label  string `yaml:"label" json:"label"` // 显示名（表单/列表）; 空 = 回退字段名
-	Kind   string `yaml:"kind" json:"kind"`
-	To     string `yaml:"to" json:"to"`    // ref/ref[]: 目标类型名
-	Editor Widget `yaml:"-" json:"editor"` // 编辑形态（kind.Editor(), Load 时填充 — 前端按此渲染）
+	Name  string `yaml:"name" json:"name"`
+	Label string `yaml:"label" json:"label"` // 显示名（表单/列表）; 空 = 回退字段名
+	Kind  string `yaml:"kind" json:"kind"`
+	To    string `yaml:"to" json:"to"` // ref/ref[]: 目标类型名
 	// 复合字段（结构语法, 非值类型 — 不进 kinds 注册表）:
 	Item        *FieldDef  `yaml:"item,omitempty" json:"item,omitempty"`     // kind=array: 元素定义（递归）
 	Fields      []FieldDef `yaml:"fields,omitempty" json:"fields,omitempty"` // kind=object: 子字段（递归）
@@ -93,19 +92,6 @@ func (t *Types) RegisterKind(k Kind) {
 	t.kinds[k.Name()] = k
 }
 
-// KindWidget kind → 编辑原语（settings 等前端伪字段需要: kind 名 ≠ 原语名,
-// 如 string → text / text → textarea）。复合字段返回自身名。
-func (t *Types) KindWidget(name string) (Widget, bool) {
-	if name == "array" || name == "object" {
-		return Widget(name), true
-	}
-	k, ok := t.kinds[name]
-	if !ok {
-		return "", false
-	}
-	return k.Editor(), true
-}
-
 // Kind 取 kind 实现; 不存在返回 ok=false。
 func (t *Types) Kind(name string) (Kind, bool) {
 	k, ok := t.kinds[name]
@@ -139,19 +125,9 @@ func (t *Types) Load(raw []byte) error {
 		for i, f := range td.Fields {
 			if f.Kind == "strings" {
 				f.Kind = "array"
-				f.Item = &FieldDef{Kind: "string"}
+				f.Item = &FieldDef{Kind: "text"} // string 归一为 array<string> — kind 已改名 text
 				td.Fields[i] = f
 			}
-		}
-		cfg.Types[name] = td
-	}
-	// 编辑形态回填（递归到复合子定义）: 每个字段的 editor = kind.Editor()
-	// （admin 前端渲染依据）; 复合字段 editor = kind 名本身 + 子字段递归 —
-	// object 的 fields / array 的 item 也要回填（前端组合控件内渲染子字段）。
-	for name := range cfg.Types {
-		td := cfg.Types[name]
-		for i := range td.Fields {
-			t.fillEditor(&td.Fields[i])
 		}
 		cfg.Types[name] = td
 	}
@@ -166,24 +142,6 @@ func (t *Types) Load(raw []byte) error {
 	}
 	t.defs = defs
 	return nil
-}
-
-// fillEditor 递归回填编辑原语（含复合子定义 — object 的 fields / array 的
-// item; 前端组合控件内渲染子字段需要 editor）。
-func (t *Types) fillEditor(f *FieldDef) {
-	if f.Kind == "array" || f.Kind == "object" {
-		f.Editor = Widget(f.Kind)
-		if f.Item != nil {
-			t.fillEditor(f.Item)
-		}
-		for i := range f.Fields {
-			t.fillEditor(&f.Fields[i])
-		}
-		return
-	}
-	if k, ok := t.kinds[f.Kind]; ok {
-		f.Editor = k.Editor()
-	}
 }
 
 // Type 取类型定义; 不存在返回 ok=false。
