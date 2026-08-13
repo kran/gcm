@@ -12,13 +12,10 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/kran/dba"
+	"github.com/kran/gcm"
 	"github.com/kran/gcm/core"
 	"github.com/kran/gcm/core/render"
-	"github.com/kran/gcm/migrations"
-	"github.com/kran/gcm/types"
 	"github.com/kran/gcm/web"
-	"github.com/kran/gcm/web/admin"
 )
 
 // adminPass 固定管理密码（测试方便）; 空 = 随机生成打印一次。
@@ -26,44 +23,30 @@ var adminPass = flag.String("admin-pass", "", "固定后台密码 (空 = 随机�
 
 func main() {
 	flag.Parse()
-	db, err := dba.Open("sqlite", "example.db")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer db.Close()
-	if err := migrations.Up(db); err != nil {
-		log.Fatal(err)
-	}
-
-	ts := types.New()
 	yaml, err := os.ReadFile("types.yaml")
 	if err != nil {
 		log.Fatal(err)
 	}
-	if err := ts.Load(yaml); err != nil {
+	// PocketBase 形态: 一个 App 装配全部（db/迁移/类型/引擎/admin/账号引导）
+	app, err := gcm.NewApp(gcm.Options{AdminPass: *adminPass}, gcm.SiteSpec{
+		Hosts:     []string{"localhost", "127.0.0.1"},
+		DBPath:    "example.db",
+		Types:     yaml,
+		Templates: "templates",
+		Static:    "static",
+		Uploads:   "uploads",
+		Setup:     setup,
+	})
+	if err != nil {
 		log.Fatal(err)
 	}
+	log.Fatal(app.Listen(":8080"))
+}
 
-	svc := core.New(db, ts)
-	eng := render.New("templates", svc)
-	site := web.New(svc, eng, "static")
-	admin.Mount(site, svc, ts, "uploads")
-
-	// 首次引导管理员账号（默认随机密码打印一次; -admin-pass 固定）
-	if dc, err := admin.EnsureDefaults(db); err != nil {
-		log.Fatal(err)
-	} else if dc != nil {
-		log.Printf("admin account created: %s / %s", dc.Username, dc.Password)
-		if *adminPass != "" {
-			if err := admin.NewService(db).SetPassword(*adminPass); err != nil {
-				log.Fatal(err)
-			}
-			log.Printf("admin password set to fixed: %s", *adminPass)
-		}
-	}
-
+// setup 站点业务: seed + 模板函数 + 自定义路由（Setup 钩子里写 Go 代码）。
+func setup(site *web.Site, svc *core.Service) error {
 	if err := seed(svc); err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	// 导航高亮: 当前节点的高亮分类集合（所属分类 + 全部祖先）。
@@ -128,7 +111,7 @@ func main() {
 			ctx.String(http.StatusInternalServerError, err.Error())
 			return
 		}
-		renderHTML(ctx, site, eng, []string{"home.html"}, map[string]any{
+		ctx.Render([]string{"home.html"}, map[string]any{
 			"Latest": latest, "Cats": cats,
 		})
 	})
@@ -136,7 +119,7 @@ func main() {
 	// 搜索页: /search?q=... （FTS5 + bigram）
 	site.Get("/search", func(ctx *web.CmsCtx) {
 		q := ctx.Query("q")
-		renderHTML(ctx, site, eng, []string{"search.html"}, map[string]any{
+		ctx.Render([]string{"search.html"}, map[string]any{
 			"Q": q,
 			"Results": func() []core.Node {
 				if q == "" {
@@ -163,13 +146,12 @@ func main() {
 			ctx.String(http.StatusInternalServerError, err.Error())
 			return
 		}
-		renderHTML(ctx, site, eng, render.Candidates(cat), map[string]any{
+		ctx.Render(render.Candidates(cat), map[string]any{
 			"Node": cat, "ID": cat.ID, "SubtreeIDs": ids,
 		})
 	})
 
-	log.Printf("example listening on :8080")
-	log.Fatal(http.ListenAndServe(":8080", site))
+	return nil
 }
 
 // ── seed 数据 ──────────────────────────────────────
@@ -269,11 +251,6 @@ func subtreeIDs(svc *core.Service, root int64) ([]int64, error) {
 		return nil, err
 	}
 	return append([]int64{root}, ids...), nil
-}
-
-// renderHTML 站点级渲染出口（CmsCtx.Render 的别名 — 站点保持旧调用名）。
-func renderHTML(ctx *web.CmsCtx, site *web.Site, eng *render.Engine, candidates []string, data map[string]any) {
-	ctx.Render(candidates, data)
 }
 
 var _ = strconv.Itoa // 占位（后续分页用）
