@@ -358,3 +358,50 @@ func TestValidSlug(t *testing.T) {
 		}
 	}
 }
+
+// 复合字段（array/object）: 定义校验 + 值递归校验 — Kind 接口不动的验证。
+func TestCompositeFields(t *testing.T) {
+	raw := `
+types:
+  page:
+    title: title
+    fields:
+      - { name: title, kind: string }
+      - { name: tags, kind: array, item: { kind: string } }
+      - { name: nav, kind: array, item: { kind: object, fields:
+            [ { name: label, kind: string }, { name: url, kind: string } ] } }
+      - { name: meta, kind: object, fields: [ { name: og_title, kind: string } ] }
+`
+	ts := New()
+	if err := ts.Load([]byte(raw)); err != nil {
+		t.Fatal(err)
+	}
+	// 值校验: 合法
+	fields := map[string]any{
+		"title": "t",
+		"tags":  []any{"a", "b"},
+		"nav":   []any{map[string]any{"label": "首页", "url": "/"}},
+		"meta":  map[string]any{"og_title": "x"},
+	}
+	if err := ts.ValidateFields("page", fields); err != nil {
+		t.Fatalf("valid composite: %v", err)
+	}
+	// 非法: 元素类型错 / 未知子字段
+	if err := ts.ValidateFields("page", map[string]any{"tags": []any{"a", 5}}); err == nil {
+		t.Fatal("tag element must be string")
+	}
+	if err := ts.ValidateFields("page", map[string]any{"meta": map[string]any{"ghost": 1}}); err == nil {
+		t.Fatal("unknown sub-field must fail")
+	}
+	// 定义校验: array 缺 item / object 缺 fields / 深度超限
+	if err := New().Load([]byte(`
+types:
+  bad1: { fields: [ { name: a, kind: array } ] }`)); err == nil {
+		t.Fatal("array without item must fail")
+	}
+	if err := New().Load([]byte(`
+types:
+  bad2: { fields: [ { name: a, kind: object } ] }`)); err == nil {
+		t.Fatal("object without fields must fail")
+	}
+}

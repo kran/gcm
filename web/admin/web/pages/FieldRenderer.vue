@@ -54,7 +54,7 @@
                     @update:model-value="set(f.name, $event)" />
 
                 <!-- 数组 -->
-                <div v-else-if="f.kind === 'array'" class="fr-array">
+                <div v-else-if="f.editor === 'array'" class="fr-array">
                     <!-- 字符串数组 → 标签输入 -->
                     <el-select v-if="f.item && f.item.kind === 'string'" multiple allow-create filterable
                         default-first-option :model-value="get(f.name) || []"
@@ -85,7 +85,7 @@
                 </div>
 
                 <!-- 对象 (递归) -->
-                <div v-else-if="f.kind === 'object'" class="fr-object">
+                <div v-else-if="f.editor === 'object'" class="fr-object">
                     <field-renderer :fields="f.fields || []" :model-value="get(f.name) || {}"
                         @update:model-value="set(f.name, $event)" />
                 </div>
