@@ -53,6 +53,9 @@ type SiteSpec struct {
 type Options struct {
 	// AdminPass 管理后台固定密码（空 = 首次生成随机密码并打印）。
 	AdminPass string
+	// Debug 开发模式: 渲染失败显示错误页（模板名/行号/原因/候选/数据 keys）;
+	// 生产空值 = HTML 注释（不泄漏细节）。
+	Debug bool
 }
 
 // App 多站点应用: HostMux 按域名分发到各站点。
@@ -118,6 +121,7 @@ func (a *App) build(spec SiteSpec) (*web.Site, error) {
 	svc := core.New(db, ts)
 	eng := render.New(spec.Templates, svc)
 	site := web.New(svc, eng, spec.Static)
+	site.Debug = a.options.Debug
 	admin.Mount(site, svc, ts, spec.Uploads)
 	if spec.Setup != nil {
 		if err := spec.Setup(site, svc); err != nil {

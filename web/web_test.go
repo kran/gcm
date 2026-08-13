@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -127,4 +128,38 @@ func TestStaticRoute(t *testing.T) {
 
 func fmtInt(n int64) string {
 	return strconv.FormatInt(n, 10)
+}
+
+// Debug 模式: 渲染失败 → 500 错误页（模板名/原因/候选/数据 keys）;
+// 生产 → HTML 注释。
+func TestDebugRenderError(t *testing.T) {
+	s, svc := newSite(t)
+	s.Debug = true
+	// article 节点渲染走 node.html — 模板引用不存在的函数 → 渲染失败
+	svc.Create(&core.Node{Type: "article", Status: core.StatusPublished, Fields: core.Fields{"body": "x"}})
+	// 覆盖 node.html 为错误模板
+	dir := svc.DB() // 用 svc 内部无法拿目录 — 直接用 newSite 的模板覆盖不现实; 改走另一路: person 模板
+	// person 模板引用 outRefs ghost（渲染失败）— 断言 Debug 时 500 页面
+	p1, _ := svc.Create(&core.Node{Type: "person", Status: core.StatusPublished, Fields: core.Fields{"name": "x"}})
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/node/%d", p1), nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != 500 {
+		t.Fatalf("debug must 500, got %d body: %s", rec.Code, rec.Body.String()[:100])
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Render Error") {
+		t.Fatalf("error page missing: %s", body[:200])
+	}
+	// 生产模式同路径 → 200 + HTML 注释
+	s.Debug = false
+	rec2 := httptest.NewRecorder()
+	s.ServeHTTP(rec2, req)
+	if rec2.Code != 200 {
+		t.Fatalf("prod must 200, got %d", rec2.Code)
+	}
+	if !strings.Contains(rec2.Body.String(), "<!-- render error") {
+		t.Fatal("prod must HTML comment")
+	}
+	_ = dir
 }
