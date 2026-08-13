@@ -109,6 +109,8 @@ export default {
     name: 'SettingsPage',
     components: { RichEditor },
     data() {
+        // 编辑形态枚举（cmx piece 同款 — 前端按形态渲染控件）
+        kinds: ['string', 'text', 'number', 'bool', 'object', 'array', 'file', 'richtext'],
         return {
             rows: [], groups: [], group: '', loading: false,
             dialog: { visible: false, saving: false, isNew: true, key: '', group: '',
