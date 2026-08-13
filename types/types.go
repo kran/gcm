@@ -93,6 +93,19 @@ func (t *Types) RegisterKind(k Kind) {
 	t.kinds[k.Name()] = k
 }
 
+// KindWidget kind → 编辑原语（settings 等前端伪字段需要: kind 名 ≠ 原语名,
+// 如 string → text / text → textarea）。复合字段返回自身名。
+func (t *Types) KindWidget(name string) (Widget, bool) {
+	if name == "array" || name == "object" {
+		return Widget(name), true
+	}
+	k, ok := t.kinds[name]
+	if !ok {
+		return "", false
+	}
+	return k.Editor(), true
+}
+
 // Kind 取 kind 实现; 不存在返回 ok=false。
 func (t *Types) Kind(name string) (Kind, bool) {
 	k, ok := t.kinds[name]

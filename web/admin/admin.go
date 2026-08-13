@@ -205,7 +205,17 @@ func (b *backend) me(ctx *web.CmsCtx) {
 
 // types 类型定义（admin UI 动态表单渲染用）。
 func (b *backend) types(ctx *web.CmsCtx) {
-	_ = ctx.Json(http.StatusOK, map[string]any{"types": b.ts.Defs()})
+	// kinds: kind 名 → 编辑原语（前端伪字段/值编辑需要 — kind 名 ≠ 原语名,
+	// string→text, text→textarea）; 复合字段自身名。
+	kinds := map[string]string{}
+	for _, name := range b.ts.KindNames() {
+		if w, ok := b.ts.KindWidget(name); ok {
+			kinds[name] = string(w)
+		}
+	}
+	kinds["array"] = "array"
+	kinds["object"] = "object"
+	_ = ctx.Json(http.StatusOK, map[string]any{"types": b.ts.Defs(), "kinds": kinds})
 }
 
 // ── 节点 CRUD ───────────────────────────────────

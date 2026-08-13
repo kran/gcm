@@ -62,7 +62,7 @@ export default {
     data() {
         return {
             rows: [], groups: [], group: '', loading: false,
-            kindNames: ['string', 'text', 'richtext', 'number', 'bool'],
+            kindNames: [], kindWidget: {}, // kind → 编辑原语（types API 下发）
             dialog: { visible: false, isEdit: false, saving: false, form: {} },
             valueModel: {},
         }
@@ -71,7 +71,9 @@ export default {
         // 值编辑: 伪装成单字段 FieldDef（kind → editor 映射自动生效, 复合字段也支持）
         valueField() {
             const kind = this.dialog.form.kind || 'string'
-            return [{ name: 'value', kind: kind, label: '值', editor: kind }]
+            // editor 用后端下发的原语名（kind 名 ≠ 原语名: string→text）
+            const editor = this.kindWidget[kind] || kind
+            return [{ name: 'value', kind: kind, label: '值', editor: editor }]
         },
     },
     async mounted() { await this.load() },
@@ -84,6 +86,11 @@ export default {
                 const gs = {}
                 this.rows.forEach(r => { if (!gs[r.group]) gs[r.group] = true })
                 this.groups = Object.keys(gs).sort()
+                // kind 注册表（编辑原语映射）: 一次拉取
+                const t = await window.$api.types()
+                this.kindWidget = t.kinds || {}
+                this.kindNames = Object.keys(this.kindWidget).filter(k =>
+                    ['string', 'text', 'richtext', 'number', 'bool'].includes(k))
             } finally { this.loading = false }
         },
         valueOf(r) {
