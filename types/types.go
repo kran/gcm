@@ -145,18 +145,13 @@ func (t *Types) Load(raw []byte) error {
 		}
 		cfg.Types[name] = td
 	}
-	// 编辑形态回填: 每个字段的 editor = kind.Editor()（admin 前端渲染依据）;
-	// 复合字段（array/object）的 editor = kind 名本身（前端对应分支）。
+	// 编辑形态回填（递归到复合子定义）: 每个字段的 editor = kind.Editor()
+	// （admin 前端渲染依据）; 复合字段 editor = kind 名本身 + 子字段递归 —
+	// object 的 fields / array 的 item 也要回填（前端组合控件内渲染子字段）。
 	for name := range cfg.Types {
 		td := cfg.Types[name]
-		for i, f := range td.Fields {
-			if f.Kind == "array" || f.Kind == "object" {
-				td.Fields[i].Editor = Widget(f.Kind)
-				continue
-			}
-			if k, ok := t.kinds[f.Kind]; ok {
-				td.Fields[i].Editor = k.Editor()
-			}
+		for i := range td.Fields {
+			t.fillEditor(&td.Fields[i])
 		}
 		cfg.Types[name] = td
 	}
@@ -171,6 +166,24 @@ func (t *Types) Load(raw []byte) error {
 	}
 	t.defs = defs
 	return nil
+}
+
+// fillEditor 递归回填编辑原语（含复合子定义 — object 的 fields / array 的
+// item; 前端组合控件内渲染子字段需要 editor）。
+func (t *Types) fillEditor(f *FieldDef) {
+	if f.Kind == "array" || f.Kind == "object" {
+		f.Editor = Widget(f.Kind)
+		if f.Item != nil {
+			t.fillEditor(f.Item)
+		}
+		for i := range f.Fields {
+			t.fillEditor(&f.Fields[i])
+		}
+		return
+	}
+	if k, ok := t.kinds[f.Kind]; ok {
+		f.Editor = k.Editor()
+	}
 }
 
 // Type 取类型定义; 不存在返回 ok=false。
