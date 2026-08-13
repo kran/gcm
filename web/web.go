@@ -57,10 +57,21 @@ func (c *CmsCtx) DB() *dba.SQL { return c.site.db }
 
 // Render 站点渲染出口: 渲染前 Fire HookRender（站点注入页面级数据）,
 // 候选级联 + 渲染错误 → HTML 注释（fail-loud 可见）。
+//
+// 默认行为: 站点未注入 Page 时, 用内置 PageData（约定分类字段）计算注入 —
+// 站点 HookRender 可完全覆盖（注入自己的 Page 或扩展字段）。
 func (c *CmsCtx) Render(candidates []string, data map[string]any) {
 	if err := c.site.svc.Hooks().Fire(HookRender, c, data); err != nil {
 		c.site.renderError(c, "render hook failed: "+err.Error())
 		return
+	}
+	// 默认页面上下文（站点未注入 Page 时计算; 覆盖优先级: 站点 hook > 内置）
+	if _, ok := data["Page"]; !ok {
+		var node *core.Node
+		if n, ok := data["Node"].(*core.Node); ok {
+			node = n
+		}
+		data["Page"] = c.site.pageData(c, node)
 	}
 	c.site.renderHTML(c, candidates, data)
 }
@@ -75,6 +86,12 @@ type Site struct {
 	// Debug 开发模式: 渲染失败显示错误页（模板名/行号/原因/候选/数据 keys）;
 	// 生产: HTML 注释（不泄漏细节, 仅日志）。
 	Debug bool
+
+	// 分类约定字段（PageData 计算依据）:
+	// 分类类型名 / 分类父引用字段 / 内容分类挂载字段 — 站点字段名不同改这里。
+	categoryType         string // 默认 "category"
+	categoryField        string // 默认 "parent"
+	contentCategoryField string // 默认 "categories"
 }
 
 // DB 暴露本站 db（站点项目/admin 用: 首次引导账号、业务表）。
@@ -91,6 +108,9 @@ func New(svc *core.Service, eng *render.Engine, static string) *Site {
 		eng:    eng,
 		static: static,
 	}
+	s.categoryType = "category"
+	s.categoryField = "parent"
+	s.contentCategoryField = "categories"
 	s.Cho = cho.New(func(w http.ResponseWriter, r *http.Request) *CmsCtx {
 		return &CmsCtx{BaseContext: cho.MakeBaseContext(w, r), site: s}
 	})
