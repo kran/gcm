@@ -140,7 +140,7 @@ export default {
         resolveExtraWidgets() {
             const builtin = this.builtinWidgets()
             ;(this.fields || []).forEach(f => {
-                if (this.widgetOf(f) && builtin.indexOf(this.widgetOf(f)) < 0 && this.extraWidgets[f.kind] === undefined) {
+                if (f.kind && builtin.indexOf(f.kind) < 0 && this.extraWidgets[f.kind] === undefined) {
                     this.resolveWidget(f.kind)
                 }
             })
