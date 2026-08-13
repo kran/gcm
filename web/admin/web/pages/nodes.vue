@@ -169,10 +169,9 @@
 
 <script>
 import FieldRenderer from './FieldRenderer.vue'
-import CatTree from './CatTree.vue'
 export default {
     name: 'NodesPage',
-    components: { FieldRenderer, CatTree },
+    components: { FieldRenderer },
     data() {
         return {
             typeNames: [],
@@ -288,9 +287,7 @@ export default {
                 if (parent) parent.children.push(node)
                 else roots.push(node)
             })
-            const label = (n) => ({ ...n, label: this.titleOf(n) })
-            const walk = (list) => list.map(n => ({ ...label(n), children: walk(n.children || []) }))
-            return walk(roots)
+            return roots
         },
         async refresh() {
             if (!this.query.type) return

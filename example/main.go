@@ -19,7 +19,7 @@ import (
 )
 
 // adminPass 固定管理密码（测试方便）; 空 = 随机生成打印一次。
-var adminPass = flag.String("admin-pass", "", "固定后台密码 (空 = 随机生成)")
+var adminPass = flag.String("admin-pass", "cmx12345", "固定后台密码 (空 = 随机生成)")
 
 func main() {
 	flag.Parse()

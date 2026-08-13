@@ -220,18 +220,28 @@ func (b *backend) listNodes(ctx *web.CmsCtx) {
 		ctx.Error(http.StatusBadRequest, "type required")
 		return
 	}
-	// filter 参数: 完整查询能力（树过滤/任意字段筛选）— 表达式经 filter 引擎
-	// 编译 + 参数化, 复用 ListFiltered 链式分段
+	// filter 参数: 完整查询能力（树过滤/任意字段筛选）; q 参数: 标题模糊搜索
+	// （like 参数化, 与 filter 叠加）。表达式经 filter 引擎编译 + 参数化。
 	var list []core.Node
 	var total int64
 	var err error
-	if filter := strings.TrimSpace(ctx.Query("filter")); filter != "" {
+	filter := strings.TrimSpace(ctx.Query("filter"))
+	q := strings.TrimSpace(ctx.Query("q"))
+	var params map[string]any
+	if q != "" {
+		if filter != "" {
+			filter += " && "
+		}
+		filter += "title like {:q}"
+		params = map[string]any{"q": "%" + q + "%"}
+	}
+	if filter != "" {
 		cf, cerr := b.core.CompileFilter(filter)
 		if cerr != nil {
 			b.bad(ctx, cerr)
 			return
 		}
-		where, args, cerr := b.core.BuildFilter(cf, typ, nil)
+		where, args, cerr := b.core.BuildFilter(cf, typ, params)
 		if cerr != nil {
 			b.bad(ctx, cerr)
 			return
