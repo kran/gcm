@@ -116,11 +116,11 @@ func (ctx *LispCtx) cmp(op, path string, val any) (string, []any, error) {
 		if op == "~" {
 			return "", nil, fmt.Errorf("filter-lisp: ~ not for JSON")
 		}
-		return "json_extract(nodes.fields, " + ctx.g.bind() + ") " + sqlOp(op) + " " + ctx.g.bind(),
+		return "json_extract(" + ctx.nodeRef + ".fields, " + ctx.g.bind() + ") " + sqlOp(op) + " " + ctx.g.bind(),
 			[]any{"$." + field, val}, nil
 	}
 	if types.IsNodeColumn(path) {
-		return "nodes." + ctx.g.quote() + " " + sqlOp(op) + " " + ctx.g.bind(),
+		return ctx.nodeRef + "." + ctx.g.quote() + " " + sqlOp(op) + " " + ctx.g.bind(),
 			[]any{path, val}, nil
 	}
 	return "", nil, fmt.Errorf("filter-lisp: %q neither $.field nor column", path)
@@ -168,41 +168,48 @@ func (ctx *LispCtx) refCmp(name string, args []lispExpr, in bool) (string, []any
 		[]any{field, val}, nil
 }
 
-// through 穿透（递归 — 任意深度）。
+// through 穿透（递归 — 任意深度, 段=表达式）。
+//
+//	(get (-> categories) (-> parent (= $.status 1)) $.name "根")
+//
+// 段表达式: (方向 字段 [条件]) — 方向 ->/<-; 字段; 可选条件（中间节点谓词）。
+// 最后两参: 目标字段 + 值（目标字段可比 $. 或列）。
 func (ctx *LispCtx) through(args []lispExpr) (string, []any, error) {
-	if len(args) < 3 {
-		return "", nil, fmt.Errorf("filter-lisp: get takes path + value")
+	if len(args) < 4 {
+		return "", nil, fmt.Errorf("filter-lisp: get takes segments + target field + value")
 	}
+	// 最后两参: 目标字段 + 值; 前面是段表达式
 	val, err := ctx.valueOf(args[len(args)-1])
 	if err != nil {
 		return "", nil, err
 	}
-	segs := args[:len(args)-1]
-	return ctx.throughRec(segs, val, 0, "nodes.id")
+	targetSeg := args[len(args)-2]
+	segs := args[:len(args)-2]
+	return ctx.throughRec(segs, val, targetSeg, 0, "nodes.id")
 }
 
 // throughRec 递归编译穿透: 每段一层 EXISTS, 别名唯一（e{i}/t{i}）。
-// 段方向全显式: "->" 前缀 = 出边, "<-" 前缀 = 入边 — 无默认（每一跳方向
-// 在表达式可见）; JOIN 按方向选 to_node/from_node + link 反向。
-func (ctx *LispCtx) throughRec(segs []lispExpr, val any, i int, link string) (string, []any, error) {
+// 段 = 表达式 (方向 字段 [条件]): 方向 ->/<- 全显式; 条件 = 中间节点谓词
+// （如 parent 的 status=1）— 编译进该段 EXISTS 的 AND。
+func (ctx *LispCtx) throughRec(segs []lispExpr, val any, targetSeg lispExpr, i int, link string) (string, []any, error) {
 	var err error
-	segName, _ := pathOf(segs[i])
-	in := false
-	switch {
-	case strings.HasPrefix(segName, "<-"):
-		in = true
-		segName = strings.TrimPrefix(segName, "<-")
-	case strings.HasPrefix(segName, "->"):
-		segName = strings.TrimPrefix(segName, "->")
-	default:
-		return "", nil, fmt.Errorf("filter-lisp: through segment %q must have direction (-> or <-)", segName)
+	segExpr := segs[i]
+	if segExpr.head == "" {
+		return "", nil, fmt.Errorf("filter-lisp: through segment must be (-> field) or (<- field [cond])")
 	}
-	// 当前层宿主类型: 段0 = ctx.td; 更深层 = 前段的 ref 目标
+	in := segExpr.head == "<-"
+	if segExpr.head != "->" && segExpr.head != "<-" {
+		return "", nil, fmt.Errorf("filter-lisp: through segment direction must be -> or <-")
+	}
+	if len(segExpr.args) < 1 {
+		return "", nil, fmt.Errorf("filter-lisp: through segment needs field")
+	}
+	segName, _ := pathOf(segExpr.args[0])
+	// 宿主切换: 本段的宿主 = 前段引用目标（段0 宿主 = ctx.td 传入值）
 	if i > 0 {
-		prev, _ := pathOf(segs[i-1])
-		prev = strings.TrimPrefix(prev, "<-")
-		prev = strings.TrimPrefix(prev, "->")
-		to, err := ctx.refTargetType(prev)
+		prevExpr := segs[i-1]
+		prevField, _ := pathOf(prevExpr.args[0])
+		to, err := ctx.refTargetType(prevField)
 		if err != nil {
 			return "", nil, err
 		}
@@ -212,16 +219,37 @@ func (ctx *LispCtx) throughRec(segs []lispExpr, val any, i int, link string) (st
 		}
 		ctx.td = &htd
 	}
+	var condFrag string
+	var condArgs []any
+	if len(segExpr.args) >= 2 {
+		// 中间条件属于"段目标节点" — 临时切到段目标类型
+		to, terr := ctx.refTargetType(segName)
+		if terr != nil {
+			return "", nil, terr
+		}
+		htd, ok := ctx.svc.types.Type(to)
+		if !ok {
+			return "", nil, fmt.Errorf("filter-lisp: type %q not defined", to)
+		}
+		origTd, origRef := ctx.td, ctx.nodeRef
+		ctx.td = &htd
+		ctx.nodeRef = fmt.Sprintf("t%d", i+1)
+		condFrag, condArgs, err = ctx.lispCall(segExpr.args[1])
+		ctx.td, ctx.nodeRef = origTd, origRef
+		if err != nil {
+			return "", nil, err
+		}
+	}
 	if _, err := ctx.refTargetType(segName); err != nil {
 		return "", nil, err
 	}
 
 	var inner string
 	var innerArgs []any
-	if i == len(segs)-2 {
-		// 目标字段（在 t{i+1} 上）
+	if i == len(segs)-1 {
+		// 最后一层: 目标字段在 t{i+1} 上
 		ta := fmt.Sprintf("t%d", i+1)
-		targetField, _ := pathOf(segs[i+1])
+		targetField, _ := pathOf(targetSeg)
 		if strings.HasPrefix(targetField, "$.") {
 			f2 := strings.TrimPrefix(targetField, "$.")
 			inner = "json_extract(" + ta + ".fields, " + ctx.g.bind() + ") = " + ctx.g.bind()
@@ -231,12 +259,11 @@ func (ctx *LispCtx) throughRec(segs []lispExpr, val any, i int, link string) (st
 			innerArgs = []any{targetField, val}
 		}
 	} else {
-		inner, innerArgs, err = ctx.throughRec(segs, val, i+1, fmt.Sprintf("t%d.id", i+1))
+		inner, innerArgs, err = ctx.throughRec(segs, val, targetSeg, i+1, fmt.Sprintf("t%d.id", i+1))
 		if err != nil {
 			return "", nil, err
 		}
 	}
-	// 段方向决定 JOIN/link: 出边 to_node 为下一节点; 入边 from_node 为下一节点
 	joinCol := "to_node"
 	linkCol := "from_node"
 	if in {
@@ -244,6 +271,10 @@ func (ctx *LispCtx) throughRec(segs []lispExpr, val any, i int, link string) (st
 		linkCol = "to_node"
 	}
 	frag := fmt.Sprintf("EXISTS(SELECT 1 FROM edges e%d JOIN nodes t%d ON t%d.id = e%d.%s WHERE e%d.field = ", i+1, i+1, i+1, i+1, joinCol, i+1) +
-		ctx.g.bind() + " AND e" + fmt.Sprintf("%d", i+1) + "." + linkCol + " = " + link + " AND " + inner + ")"
-	return frag, append(innerArgs, segName), nil
+		ctx.g.bind() + " AND e" + fmt.Sprintf("%d", i+1) + "." + linkCol + " = " + link
+	if condFrag != "" {
+		frag += " AND " + condFrag
+	}
+	frag += " AND " + inner + ")"
+	return frag, append(append(condArgs, innerArgs...), segName), nil
 }

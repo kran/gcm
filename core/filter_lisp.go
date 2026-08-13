@@ -32,11 +32,12 @@ type lispExpr struct {
 
 // LispCtx 编译上下文: 注册表 + 宿主类型（穿透时变化）+ 参数/占位符。
 type LispCtx struct {
-	svc    *Service
-	funcs  map[string]LispFunc
-	td     *types.TypeDef // 当前宿主类型（get 穿透逐层变化）
-	params map[string]any
-	g      phGen
+	svc     *Service
+	funcs   map[string]LispFunc
+	td      *types.TypeDef // 当前宿主类型（get 穿透逐层变化）
+	params  map[string]any
+	g       phGen
+	nodeRef string // 当前节点引用（"nodes" 顶层; 穿透段条件 = "t{i}"）
 }
 
 // LispFunc 函数编译器: args 是函数参数（可嵌套表达式）。
@@ -169,7 +170,7 @@ func (s *Service) CompileLisp(expr, typeName string, params map[string]any) (str
 		return "", nil, fmt.Errorf("core: type %q not defined", typeName)
 	}
 	idx := 1
-	ctx := &LispCtx{svc: s, funcs: s.lispFuncs, td: &td, params: params, g: phGen{&idx}}
+	ctx := &LispCtx{svc: s, funcs: s.lispFuncs, td: &td, params: params, g: phGen{&idx}, nodeRef: "nodes"}
 	if e.head == "" {
 		return "", nil, fmt.Errorf("filter-lisp: top-level must be a call")
 	}

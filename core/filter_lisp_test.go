@@ -54,8 +54,8 @@ func TestLispFilter(t *testing.T) {
 	}
 	// 5. 多层穿透（get 路径）
 	//    文章 → categories(子) → parent(根) 的 name = "根"
-	//    (get ->categories ->parent $.name "根") — 3 段路径
-	if n := lq(`(get ->categories ->parent $.name "根")`, nil); n != 1 {
+	//    (get (-> categories) (-> parent) $.name "根") — 3 段路径
+	if n := lq(`(get (-> categories) (-> parent) $.name "根")`, nil); n != 1 {
 		t.Fatalf("get 3-level: %d", n)
 	}
 }
@@ -111,10 +111,10 @@ func TestLispThroughDirection(t *testing.T) {
 	art, _ := s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "甲", "categories": []any{child}}})
 	b, _ := s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "乙", "categories": []any{root}}})
 
-	// (get ->categories <-parent $.name "子"): 文章→分类(出边), ^parent(入边)=
+	// (get (-> categories) (<- parent) $.name "子"): 文章→分类(出边), ^parent(入边)=
 	// 谁把该分类当父。乙挂 root → root 的 <-parent 入边 = child（child.parent=root）
 	// → child.name="子" ✓ 乙命中; 甲挂 child → child 的 <-parent 入边 = 无 ✗
-	where, args, err := s.CompileLisp(`(get ->categories <-parent $.name "子")`, "article", nil)
+	where, args, err := s.CompileLisp(`(get (-> categories) (<- parent) $.name "子")`, "article", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,4 +126,29 @@ func TestLispThroughDirection(t *testing.T) {
 		t.Fatalf("<-direction: %d (want 乙 %d)", len(list), b)
 	}
 	_ = art
+}
+
+// 段中间条件（中间节点谓词）: (get (-> categories) (-> parent (= $.status 1)) $.name "根")
+// parent 节点 status=1 才通过。
+func TestLispThroughCond(t *testing.T) {
+	s := newFilterSvc(t)
+	rootPub, _ := s.Create(&Node{Type: "category", Slug: "rootp", Status: StatusPublished, Fields: Fields{"name": "根发布"}})
+	rootDraft, _ := s.Create(&Node{Type: "category", Slug: "rootd", Status: StatusDraft, Fields: Fields{"name": "根草稿"}})
+	child1, _ := s.Create(&Node{Type: "category", Slug: "c1", Fields: Fields{"name": "子1", "parent": rootPub}})
+	child2, _ := s.Create(&Node{Type: "category", Slug: "c2", Fields: Fields{"name": "子2", "parent": rootDraft}})
+	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "甲", "categories": []any{child1}}})
+	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "乙", "categories": []any{child2}}})
+
+	// parent 中间条件 status=1: 只有甲（父分类 rootPub 已发布）通过
+	where, args, err := s.CompileLisp(`(get (-> categories) (-> parent (= status 1)) $.name "根发布")`, "article", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, _, err := s.ListAny(where, args, 1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].Fields["title"] != "甲" {
+		t.Fatalf("through cond: %d", len(list))
+	}
 }
