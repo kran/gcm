@@ -76,7 +76,17 @@ func parseExpandExpr(expr string) ([][]types.Seg, error) {
 	return out, nil
 }
 
-// expandPathRec 在 node 上展开 path[segIdx:]; 结果挂 node.Expand[path[segIdx].field]。
+// expandKey 展开容器 key: 与表达式 token 原样一致 — 出边 "field",
+// 入边 "<-field"（同名字段双向展开不冲突, 模板 index 访问）。
+func expandKey(seg types.Seg) string {
+	if seg.In {
+		return "<-" + seg.Field
+	}
+	return seg.Field
+}
+
+// expandPathRec 在 node 上展开 path[segIdx:]; 结果挂 node.Expand[expandKey]。
+// 双向同名字段: 出边 "categories" / 入边 "<-categories" 各自独立, 不覆盖。
 func (s *Service) expandPathRec(node *Node, path []types.Seg, segIdx int) error {
 	seg := path[segIdx]
 	// 方向: 出边按宿主类型查字段, 入边全局查
@@ -145,10 +155,10 @@ func (s *Service) expandPathRec(node *Node, path []types.Seg, segIdx int) error 
 	// 挂载
 	if kind.Class() == types.ClassRef {
 		if len(ptrs) > 0 {
-			node.Expand[seg.Field] = ptrs[0]
+			node.Expand[expandKey(seg)] = ptrs[0]
 		}
 	} else {
-		node.Expand[seg.Field] = ptrs
+		node.Expand[expandKey(seg)] = ptrs
 	}
 	return nil
 }
@@ -245,10 +255,10 @@ func (s *Service) expandBatch(nodes []*Node, path []types.Seg, segIdx int) error
 		}
 		if single {
 			if len(ptrs) > 0 {
-				n.Expand[seg.Field] = ptrs[0]
+				n.Expand[expandKey(seg)] = ptrs[0]
 			}
 		} else {
-			n.Expand[seg.Field] = ptrs
+			n.Expand[expandKey(seg)] = ptrs
 		}
 	}
 	// 4. 递归下一段（下一层节点们 = 所有目标）

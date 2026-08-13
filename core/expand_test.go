@@ -92,7 +92,7 @@ func TestExpandPathIn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	arts := root.Expand["categories"].([]*Node)
+	arts := root.Expand["<-categories"].([]*Node)
 	if len(arts) != 2 {
 		t.Fatalf("articles: %d", len(arts))
 	}
@@ -110,7 +110,7 @@ func TestExpandPathMixed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	arts := root.Expand["categories"].([]*Node)
+	arts := root.Expand["<-categories"].([]*Node)
 	if len(arts) != 1 {
 		t.Fatalf("articles: %d", len(arts))
 	}
@@ -205,5 +205,39 @@ func TestExpandDeepPathFails(t *testing.T) {
 	_, err := s.ExpandPath(a, "authors.authors.authors.authors.authors")
 	if err == nil {
 		t.Fatal("5-segment path must fail (max 4)")
+	}
+}
+
+// 双向同名字段展开: 出边 "categories" 与入边 "<-categories" 各自独立（key 不冲突）。
+func TestExpandBidirectionalKey(t *testing.T) {
+	s := newFilterSvc(t)
+	root, _ := s.Create(&Node{Type: "category", Fields: Fields{"name": "根"}})
+	child, _ := s.Create(&Node{Type: "category", Fields: Fields{"name": "子", "parent": root}})
+	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "a", "categories": []any{child}}})
+
+	// 展开子分类: 出边 categories（无, 叶子）+ 入边 <-categories（文章 a 引用它）
+	n, err := s.ExpandPath(child, "categories, <-categories")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, hasOut := n.Expand["categories"]
+	in, hasIn := n.Expand["<-categories"]
+	if !hasOut || !hasIn {
+		t.Fatalf("both directions must exist: %v", n.Expand)
+	}
+	if len(out.([]*Node)) != 0 {
+		t.Fatalf("out should be empty: %v", out)
+	}
+	inList := in.([]*Node)
+	if len(inList) != 1 || inList[0].Type != "article" {
+		t.Fatalf("in should have the article: %v", inList)
+	}
+	// 批量版同验证
+	nodes, err := s.ExpandPathMany([]int64{child}, "categories, <-categories")
+	if err != nil || len(nodes) != 1 {
+		t.Fatal(err)
+	}
+	if _, ok := nodes[0].Expand["<-categories"]; !ok {
+		t.Fatal("batch: in key missing")
 	}
 }
