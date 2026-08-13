@@ -152,8 +152,9 @@ func (s *Service) expandPathRec(node *Node, path []types.Seg, segIdx int) error 
 			}
 		}
 	}
-	// 挂载
-	if kind.Class() == types.ClassRef {
+	// 挂载（出边形态由 Class 驱动: ref → 单值; 入边永远是集合 —
+	// "谁引用我"无唯一约束, N 个来源 → 数组, 与字段 Class 无关）
+	if kind.Class() == types.ClassRef && !seg.In {
 		if len(ptrs) > 0 {
 			node.Expand[expandKey(seg)] = ptrs[0]
 		}
@@ -237,7 +238,7 @@ func (s *Service) expandBatch(nodes []*Node, path []types.Seg, segIdx int) error
 	if !ok {
 		return fmt.Errorf("core: expand: unknown kind %q", f.Kind)
 	}
-	single := kind.Class() == types.ClassRef
+	single := kind.Class() == types.ClassRef && !seg.In // 入边永远数组
 	for _, n := range nodes {
 		if n.Expand == nil {
 			n.Expand = map[string]any{}
