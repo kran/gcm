@@ -23,13 +23,17 @@ func Up(db *dba.SQL) error {
 	if err != nil {
 		return fmt.Errorf("migrations: provider: %w", err)
 	}
-	if _, err := provider.Up(context.Background()); err != nil {
+	results, err := provider.Up(context.Background())
+	if err != nil {
 		return fmt.Errorf("migrations: up: %w", err)
 	}
-	// ANALYZE: 统计缺失会让 SQLite 选错执行计划（实测: 组合查询
-	// edges 全扫 1.2s vs 索引直查 1.5ms）。建库后跑一次, 规划器有据可依。
-	if _, err := db.Add("ANALYZE").Exec(); err != nil {
-		return fmt.Errorf("migrations: analyze: %w", err)
+	// ANALYZE 只在新迁移应用后跑: 统计缺失会让 SQLite 选错执行计划
+	// （实测: 组合查询 edges 全扫 1.2s vs 索引直查 1.5ms）。每次启动
+	// 都 ANALYZE 对大库是秒级开销 — 无新迁移时 schema 未变, 无需重跑。
+	if len(results) > 0 {
+		if _, err := db.Add("ANALYZE").Exec(); err != nil {
+			return fmt.Errorf("migrations: analyze: %w", err)
+		}
 	}
 	return nil
 }

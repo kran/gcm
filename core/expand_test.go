@@ -120,7 +120,7 @@ func TestExpandPathMixed(t *testing.T) {
 	}
 }
 
-// 校验: 未知字段 fail-loud; 空表达式 fail。
+// 校验: 未知字段/非 ref 字段 fail-loud; 空/`*` = 自动展开（不再报错）。
 func TestExpandPathValidation(t *testing.T) {
 	ts := newTypes(t, expandPathTypes)
 	s := New(testDB(t), ts)
@@ -128,11 +128,29 @@ func TestExpandPathValidation(t *testing.T) {
 	if _, err := s.ExpandPath(art, "ghost"); err == nil {
 		t.Fatal("unknown field must fail")
 	}
-	if _, err := s.ExpandPath(art, "  "); err == nil {
-		t.Fatal("empty expr must fail")
+	if _, err := s.ExpandPath(art, "  "); err != nil {
+		t.Fatalf("empty expr = auto expand: %v", err)
 	}
 	if _, err := s.ExpandPath(art, "title"); err == nil {
 		t.Fatal("non-ref field must fail")
+	}
+}
+
+// "*" 引擎语义: 按类型展开全部出边 ref 字段（一层）。
+func TestExpandPathAuto(t *testing.T) {
+	ts := newTypes(t, expandPathTypes)
+	s := New(testDB(t), ts)
+	p1, _ := s.Create(&Node{Type: "person", Fields: Fields{"name": "张三"}})
+	art, _ := s.Create(&Node{Type: "article", Fields: Fields{"title": "甲", "authors": []any{p1}}})
+	n, err := s.ExpandPath(art, "*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := n.Expand["authors"]; !ok {
+		t.Fatalf("auto expand must include authors: %v", n.Expand)
+	}
+	if _, ok := n.Expand["categories"]; !ok {
+		t.Fatalf("auto expand must include categories (empty ok): %v", n.Expand)
 	}
 }
 

@@ -27,11 +27,10 @@ import (
 
 // Engine 渲染引擎: 模板根目录 + 函数表 + 核心服务（查询注入源）。
 type Engine struct {
-	mu      sync.RWMutex
-	root    string
-	funcs   template.FuncMap // 自定义函数（查询函数 + 站点业务函数）
-	core    *core.Service
-	filters sync.Map // filter 表达式 → *core.CompiledFilter（渲染期编译缓存）
+	mu    sync.RWMutex
+	root  string
+	funcs template.FuncMap // 自定义函数（查询函数 + 站点业务函数）
+	core  *core.Service
 }
 
 // New 建渲染引擎。root 是模板目录; svc 提供查询函数。
@@ -150,7 +149,7 @@ func (e *Engine) queryFuncs() template.FuncMap {
 		// 用法: {{ filterList "article" "status = 1 && categories ~ {:c}" (dict "c" 5) 1 10 }}
 		// params 传 nil 表示无占位符; 排序与 List 一致（sort DESC）。
 		"filterList": func(typ, expr string, params map[string]any, page, size int) []core.Node {
-			cf, err := e.compileFilter(expr)
+			cf, err := e.core.CompileFilter(expr)
 			fail(err)
 			where, args, err := e.core.BuildFilter(cf, typ, params)
 			fail(err)
@@ -237,19 +236,6 @@ func nodeIDs(nodes []core.Node) []int64 {
 		ids = append(ids, n.ID)
 	}
 	return ids
-}
-
-// compileFilter 编译 + 缓存 filter（渲染期同一表达式只编译一次）。
-func (e *Engine) compileFilter(expr string) (*core.CompiledFilter, error) {
-	if v, ok := e.filters.Load(expr); ok {
-		return v.(*core.CompiledFilter), nil
-	}
-	cf, err := e.core.CompileFilter(expr)
-	if err != nil {
-		return nil, err
-	}
-	e.filters.Store(expr, cf)
-	return cf, nil
 }
 
 // targets 边 → 端点节点列表（保持边序; N+1 顶着, 页面量小毫秒级）。

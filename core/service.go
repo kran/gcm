@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/kran/dba"
@@ -35,11 +36,12 @@ const (
 )
 
 type Service struct {
-	db     *dba.SQL
-	dao    *dba.Dao[Node]
-	types  *types.Types
-	search SearchIndex // 全文检索引擎（默认 FTS5+bigram; SetSearchIndex 可换）
-	hooks  *hook.Bus
+	db          *dba.SQL
+	dao         *dba.Dao[Node]
+	types       *types.Types
+	search      SearchIndex // 全文检索引擎（默认 FTS5+bigram; SetSearchIndex 可换）
+	hooks       *hook.Bus
+	filterCache sync.Map // filter 表达式 → *CompiledFilter（编译缓存, 消费方共享）
 }
 
 // Hooks 站点级 hook 总线（注册扩展; 执行顺序 = priority 升序 + 注册序稳定）。

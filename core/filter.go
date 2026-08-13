@@ -426,13 +426,19 @@ type CompiledFilter struct {
 }
 
 // CompileFilter 编译并校验 filter（语法 + 占位符收集; 字段校验在 BuildFilter）。
+// 编译结果按表达式缓存（Service 级）: 渲染期/admin 高频同表达式共享,
+// 编译一次 — 纯函数职责也借此留在引擎（消费方无需自建缓存）。
 func (s *Service) CompileFilter(expr string) (*CompiledFilter, error) {
+	if v, ok := s.filterCache.Load(expr); ok {
+		return v.(*CompiledFilter), nil
+	}
 	e, err := parse(expr)
 	if err != nil {
 		return nil, err
 	}
 	cf := &CompiledFilter{src: expr, expr: e}
 	s.collectPlaceholders(e, &cf.placeholds)
+	s.filterCache.Store(expr, cf)
 	return cf, nil
 }
 

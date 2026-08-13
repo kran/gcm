@@ -252,23 +252,16 @@ func (b *backend) listNodes(ctx *web.CmsCtx) {
 	})
 }
 
-// expandMany 列表批量展开全部出边 ref 字段（expr "*" 语义, 一层）。
+// expandMany 列表批量展开全部出边 ref 字段 — "*" 引擎语义（core 解析）。
 func (b *backend) expandMany(nodes []core.Node) ([]core.Node, error) {
 	if len(nodes) == 0 {
-		return nodes, nil
-	}
-	expr, err := b.autoExpandExpr(nodes[0].Type)
-	if err != nil {
-		return nil, err
-	}
-	if expr == "" {
 		return nodes, nil
 	}
 	ids := make([]int64, 0, len(nodes))
 	for _, n := range nodes {
 		ids = append(ids, n.ID)
 	}
-	expanded, err := b.core.ExpandPathMany(ids, expr)
+	expanded, err := b.core.ExpandPathMany(ids, "*")
 	if err != nil {
 		return nil, err
 	}
@@ -277,22 +270,6 @@ func (b *backend) expandMany(nodes []core.Node) ([]core.Node, error) {
 		out = append(out, *p)
 	}
 	return out, nil
-}
-
-// autoExpandExpr 该类型全部出边 ref 字段的逗号表达式（"authors, categories"）;
-// 无 ref 字段 → 空串。
-func (b *backend) autoExpandExpr(typeName string) (string, error) {
-	td, ok := b.ts.Type(typeName)
-	if !ok {
-		return "", fmt.Errorf("type %q not defined", typeName)
-	}
-	fields := []string{}
-	for _, f := range td.Fields {
-		if b.ts.IsRefKind(f.Kind) {
-			fields = append(fields, f.Name)
-		}
-	}
-	return strings.Join(fields, ", "), nil
 }
 
 // nodeInput 创建/更新输入: 列字段 + 类型字段（含 ref 字段 — 引擎落边）。
@@ -468,15 +445,7 @@ func (b *backend) expand(ctx *web.CmsCtx) {
 			ctx.Error(http.StatusNotFound, "not found")
 			return
 		}
-		expr, err = b.autoExpandExpr(n.Type)
-		if err != nil {
-			b.internal(ctx, err)
-			return
-		}
-		if expr == "" {
-			_ = ctx.Json(http.StatusOK, map[string]any{"node": n})
-			return
-		}
+		expr = "*" // 引擎语义: 该类型全部出边 ref 字段
 	}
 	root, err := b.core.ExpandPath(nodeID, expr)
 	if err != nil {

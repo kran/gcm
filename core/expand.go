@@ -96,11 +96,9 @@ func expandKey(seg types.Seg) string {
 
 // ExpandPathMany 批量路径展开: 返回根节点列表（每个带 Expand 容器）。
 // 字段校验用全局定义（列表场景类型一致; 出/入边都允许）。
+// expr 支持 "*"（或空）: 按首节点类型展开全部出边 ref 字段（一层, 引擎语义,
+// admin 列表回显/编辑预置共用 — 不再由消费方拼字段）。
 func (s *Service) ExpandPathMany(ids []int64, expr string) ([]*Node, error) {
-	paths, err := parseExpandExpr(expr)
-	if err != nil {
-		return nil, err
-	}
 	nodes, err := s.nodesByIDs(ids)
 	if err != nil {
 		return nil, err
@@ -109,12 +107,42 @@ func (s *Service) ExpandPathMany(ids []int64, expr string) ([]*Node, error) {
 	for i := range nodes {
 		ptrs = append(ptrs, &nodes[i])
 	}
+	expr = strings.TrimSpace(expr)
+	if expr == "" || expr == "*" {
+		if len(ptrs) == 0 {
+			return ptrs, nil
+		}
+		expr = s.autoExpandExpr(ptrs[0].Type)
+	}
+	if expr == "" {
+		return ptrs, nil // 类型无 ref 字段: 原样返回
+	}
+	paths, err := parseExpandExpr(expr)
+	if err != nil {
+		return nil, err
+	}
 	for _, path := range paths {
 		if err := s.expandBatch(ptrs, path, 0); err != nil {
 			return nil, err
 		}
 	}
 	return ptrs, nil
+}
+
+// autoExpandExpr 该类型全部出边 ref 字段的逗号表达式（"authors, categories"）;
+// 无 ref 字段 → 空串。引擎级"*"语义（admin/render 共用）。
+func (s *Service) autoExpandExpr(typeName string) string {
+	td, ok := s.types.Type(typeName)
+	if !ok {
+		return ""
+	}
+	fields := []string{}
+	for _, f := range td.Fields {
+		if s.types.IsRefKind(f.Kind) {
+			fields = append(fields, f.Name)
+		}
+	}
+	return strings.Join(fields, ", ")
 }
 
 // expandBatch 在 nodes 批量展开 path[segIdx:]: 一次批量查边 + 批量取节点。
