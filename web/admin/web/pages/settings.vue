@@ -73,7 +73,9 @@ export default {
             const kind = this.dialog.form.kind || 'string'
             // editor 用后端下发的原语名（kind 名 ≠ 原语名: string→text）
             const editor = this.kindWidget[kind] || kind
-            return [{ name: 'value', kind: kind, label: '值', editor: editor }]
+            const f = { name: 'value', kind: kind, label: '值', editor: editor }
+            if (kind === 'array') f.item = { kind: 'string', label: '元素' } // array<string> 默认配置
+            return [f]
         },
     },
     async mounted() { await this.load() },
@@ -89,10 +91,11 @@ export default {
                 // kind 注册表（编辑原语映射）: 一次拉取
                 const t = await window.$api.types()
                 this.kindWidget = t.kinds || {}
-                // 编辑形态枚举（piece 同款）: 标量 + 上传 — 值透传, 不为配置
-                // 值定义结构（array/object 等结构配置走类型系统的节点字段）
+                // kind 配置实例（每个 kind 完整语义）: 标量 + 上传 + array
+                // （默认 array<string> — 标签/列表）。object 自由 map 无编辑
+                // 形态, 等 settings schema 注册机制再入下拉。
                 this.kindNames = Object.keys(this.kindWidget).filter(k =>
-                    ['string', 'text', 'richtext', 'number', 'bool', 'image', 'file'].includes(k))
+                    ['string', 'text', 'richtext', 'number', 'bool', 'image', 'file', 'array'].includes(k))
             } finally { this.loading = false }
         },
         valueOf(r) {

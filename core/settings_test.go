@@ -54,11 +54,21 @@ func TestSettings(t *testing.T) {
 	}
 }
 
-// settings 值透传（piece 哲学）: array/object 不是配置的 kind — 结构配置走
-// 类型系统的节点字段; settings 只收标量编辑形态。
-func TestSettingsScalarOnly(t *testing.T) {
+// kind 配置实例: array = array<string> 默认配置（校验元素）; object = 形状检查。
+func TestSettingsComposite(t *testing.T) {
 	s := newFilterSvc(t)
-	if err := s.SetSetting(Setting{Key: "x", Kind: "array", Value: []any{"a"}}); err == nil {
-		t.Fatal("array is not a settings kind (edit-shape only, scalar values)")
+	// array<string>: 合法 / 非字符串元素拒绝
+	if err := s.SetSetting(Setting{Key: "tags", Group: "seo", Kind: "array", Value: []any{"a", "b"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetSetting(Setting{Key: "x", Kind: "array", Value: []any{"a", 5}}); err == nil {
+		t.Fatal("array element must be string")
+	}
+	// object: 形状检查（自由 map, 无子定义）
+	if err := s.SetSetting(Setting{Key: "meta", Kind: "object", Value: map[string]any{"og": "x"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetSetting(Setting{Key: "y", Kind: "object", Value: "not-map"}); err == nil {
+		t.Fatal("object must be map")
 	}
 }

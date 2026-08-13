@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/kran/gcm/types"
 )
 
 // Setting 一条站点配置。
@@ -79,13 +81,22 @@ func (s *Service) ListSettings(group string) ([]Setting, error) {
 // SetSetting upsert 一条配置: kind 必须已注册（复用类型系统校验）+ 值经
 // kind.Validate（fail-loud）。group/note 是元数据透传。
 func (s *Service) SetSetting(st Setting) error {
-	// piece 哲学: kind = 编辑形态（前端渲染哪个控件）, 值透传 — 服务层
-	// 只做"kind 已注册 + 标量值校验", 不为配置值定义结构（语义归 UI/模板）。
-	k, ok := s.types.Kind(st.Kind)
-	if !ok {
-		return fmt.Errorf("core: settings %q: unknown kind %q", st.Key, st.Kind)
+	// kind 配置实例语义: settings 每一项 = 一个 kind 被应用（携带完整语义
+	// 校验 + 编辑形态）。复合 kind 用默认配置 — array = array<string>
+	// （标签/列表）; object = 自由 map（形状检查, 子定义等 schema 注册机制）。
+	// 值经 ValidateValue 校验（叶子走 kind.Validate, 复合递归）。
+	fd := types.FieldDef{Kind: st.Kind}
+	switch st.Kind {
+	case "array":
+		fd.Item = &types.FieldDef{Kind: "string"}
+	case "object":
+		// 自由 map: 仅形状检查（无子定义）
+		if _, ok := st.Value.(map[string]any); !ok {
+			return fmt.Errorf("core: settings %q: object expects map[string]any, got %T", st.Key, st.Value)
+		}
+		return nil
 	}
-	if err := k.Validate(st.Value); err != nil {
+	if err := s.types.ValidateValue("settings", fd, st.Value); err != nil {
 		return fmt.Errorf("core: settings %q: %w", st.Key, err)
 	}
 	raw, err := json.Marshal(st.Value)
