@@ -342,37 +342,6 @@ func (t *Types) validateTitle(name string, td TypeDef, defs map[string]TypeDef) 
 	return nil
 }
 
-// maxCompositeDepth 复合字段嵌套上限（防畸形配置）。
-const maxCompositeDepth = 4
-
-// normalizeComposite 递归校验复合字段（array/object 结构语法）:
-// array 必带 item; object 必带 fields; 子定义递归到叶子标量。
-func normalizeComposite(typeName string, f FieldDef, depth int) error {
-	if depth > maxCompositeDepth {
-		return fmt.Errorf("types: type %q field %q: nesting depth exceeds %d", typeName, f.Name, maxCompositeDepth)
-	}
-	switch f.Kind {
-	case "array":
-		if f.Item == nil {
-			return fmt.Errorf("types: type %q field %q: array requires item definition", typeName, f.Name)
-		}
-		return normalizeComposite(typeName, *f.Item, depth+1)
-	case "object":
-		if len(f.Fields) == 0 {
-			return fmt.Errorf("types: type %q field %q: object requires fields", typeName, f.Name)
-		}
-		for _, sub := range f.Fields {
-			if !nameRe.MatchString(sub.Name) {
-				return fmt.Errorf("types: type %q field %q.%s: must match %s", typeName, f.Name, sub.Name, nameRe)
-			}
-			if err := normalizeComposite(typeName, sub, depth+1); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 // fieldByName 按名取字段。
 func FieldByName(td TypeDef, name string) (FieldDef, bool) {
 	for _, f := range td.Fields {
@@ -500,6 +469,40 @@ func (t *Types) ValidateFields(typeName string, fields map[string]any) error {
 	return nil
 }
 
+// ── 复合字段（array/object 结构语法, 非值类型 — 不进 kinds 注册表）──
+
+// maxCompositeDepth 复合字段嵌套上限（防畸形配置）。
+const maxCompositeDepth = 4
+
+// normalizeComposite 递归校验复合字段: array 必带 item; object 必带 fields;
+// 子定义递归到叶子标量。校验在容器层（与 ValidateValue 同层递归）。
+func normalizeComposite(typeName string, f FieldDef, depth int) error {
+	if depth > maxCompositeDepth {
+		return fmt.Errorf("types: type %q field %q: nesting depth exceeds %d", typeName, f.Name, maxCompositeDepth)
+	}
+	switch f.Kind {
+	case "array":
+		if f.Item == nil {
+			return fmt.Errorf("types: type %q field %q: array requires item definition", typeName, f.Name)
+		}
+		return normalizeComposite(typeName, *f.Item, depth+1)
+	case "object":
+		if len(f.Fields) == 0 {
+			return fmt.Errorf("types: type %q field %q: object requires fields", typeName, f.Name)
+		}
+		for _, sub := range f.Fields {
+			if !nameRe.MatchString(sub.Name) {
+				return fmt.Errorf("types: type %q field %q.%s: must match %s", typeName, f.Name, sub.Name, nameRe)
+			}
+			if err := normalizeComposite(typeName, sub, depth+1); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// isEmpty 空判断（required 检查用）: 复合字段按形状, 标量走 kind.IsEmpty。
 func (t *Types) isEmpty(kind string, v any) bool {
 	switch kind {
 	case "array":
