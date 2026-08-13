@@ -40,7 +40,8 @@ type FieldDef struct {
 	Name        string `yaml:"name" json:"name"`
 	Label       string `yaml:"label" json:"label"` // 显示名（表单/列表）; 空 = 回退字段名
 	Kind        string `yaml:"kind" json:"kind"`
-	To          string `yaml:"to" json:"to"` // ref/ref[]: 目标类型名
+	To          string `yaml:"to" json:"to"`    // ref/ref[]: 目标类型名
+	Editor      string `yaml:"-" json:"editor"` // 编辑形态（kind.Editor(), Load 时填充 — 前端按此渲染）
 	Required    bool   `yaml:"required" json:"required"`
 	Symmetric   bool   `yaml:"symmetric" json:"symmetric"`     // 对称: 存一次查双向
 	Transitive  bool   `yaml:"transitive" json:"transitive"`   // 传递: 可达性遍历
@@ -115,6 +116,16 @@ func (t *Types) Load(raw []byte) error {
 	}
 	if len(cfg.Types) == 0 {
 		return errors.New("types: no types defined")
+	}
+	// 编辑形态回填: 每个字段的 editor = kind.Editor()（admin 前端渲染依据）
+	for name := range cfg.Types {
+		td := cfg.Types[name]
+		for i, f := range td.Fields {
+			if k, ok := t.kinds[f.Kind]; ok {
+				td.Fields[i].Editor = k.Editor()
+			}
+		}
+		cfg.Types[name] = td
 	}
 	// map key 是类型名: 回填进 TypeDef.Name（yaml 不会自动写）
 	for name, td := range cfg.Types {

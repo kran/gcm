@@ -9,9 +9,9 @@
                 </div>
 
                 <!-- 标量 -->
-                <el-input v-if="f.kind === 'string'" :model-value="get(f.name)"
+                <el-input v-if="f.editor === 'text'" :model-value="get(f.name)"
                     @update:model-value="set(f.name, $event)" />
-                <div v-else-if="f.kind === 'image'" class="fr-image">
+                <div v-else-if="f.editor === 'upload-image'" class="fr-image">
                     <el-input :model-value="get(f.name)" @update:model-value="set(f.name, $event)"
                         placeholder="/uploads/xxx.png" />
                     <input type="file" :ref="'file-' + f.name" style="display:none;" accept="image/*"
@@ -19,14 +19,14 @@
                     <el-button size="small" @click="pickFile(f.name)">上传</el-button>
                     <img v-if="get(f.name)" :src="get(f.name)" class="fr-image-preview" />
                 </div>
-                <div v-else-if="f.kind === 'file'" class="fr-image">
+                <div v-else-if="f.editor === 'upload-file'" class="fr-image">
                     <el-input :model-value="get(f.name)" @update:model-value="set(f.name, $event)"
                         placeholder="/uploads/xxx.mp4" />
                     <input type="file" :ref="'file-' + f.name" style="display:none;"
                         @change="uploadImage(f.name, $event)" />
                     <el-button size="small" @click="pickFile(f.name)">上传</el-button>
                 </div>
-                <div v-else-if="f.kind === 'ref'" class="fr-ref">
+                <div v-else-if="f.editor === 'ref'" class="fr-ref">
                     <el-select :model-value="get(f.name)" filterable remote clearable
                                :remote-method="(q) => searchRef(f, q)"
                                :loading="refLoading[f.name]" placeholder="搜索并选择节点"
@@ -35,7 +35,7 @@
                                    :label="o.label" :value="o.id" />
                     </el-select>
                 </div>
-                <div v-else-if="f.kind === 'ref[]'" class="fr-ref">
+                <div v-else-if="f.editor === 'ref[]'" class="fr-ref">
                     <el-select :model-value="get(f.name) || []" multiple filterable remote
                                :remote-method="(q) => searchRef(f, q)"
                                :loading="refLoading[f.name]" placeholder="搜索并选择多个节点"
@@ -44,13 +44,13 @@
                                    :label="o.label" :value="o.id" />
                     </el-select>
                 </div>
-                <el-input v-else-if="f.kind === 'text'" type="textarea" :rows="4"
+                <el-input v-else-if="f.editor === 'textarea'" type="textarea" :rows="4"
                     :model-value="get(f.name)" @update:model-value="set(f.name, $event)" />
-                <rich-editor v-else-if="f.kind === 'richtext'" :model-value="get(f.name) || ''"
+                <rich-editor v-else-if="f.editor === 'richtext'" :model-value="get(f.name) || ''"
                     @update:model-value="set(f.name, $event)" />
-                <el-input-number v-else-if="f.kind === 'number'" :model-value="get(f.name)"
+                <el-input-number v-else-if="f.editor === 'number'" :model-value="get(f.name)"
                     @update:model-value="set(f.name, $event)" style="width:200px;" />
-                <el-switch v-else-if="f.kind === 'bool'" :model-value="!!get(f.name)"
+                <el-switch v-else-if="f.editor === 'bool'" :model-value="!!get(f.name)"
                     @update:model-value="set(f.name, $event)" />
 
                 <!-- 数组 -->

@@ -18,7 +18,8 @@ func (fileKind) IsEmpty(v any) bool {
 	s, ok := v.(string)
 	return !ok || strings.TrimSpace(s) == ""
 }
-func (fileKind) Class() Class { return ClassField }
+func (fileKind) Class() Class   { return ClassField }
+func (fileKind) Editor() string { return "upload-file" }
 
 func (fileKind) ValidateField(t *Types, typeName string, f FieldDef, defs map[string]TypeDef) error {
 	return rejectRefAttrs(typeName, f)

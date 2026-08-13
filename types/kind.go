@@ -14,6 +14,10 @@ type Kind interface {
 	IsEmpty(v any) bool
 	// Class 分类: 值存哪、是什么形态 — kind 自己的声明, 引擎零推断。
 	Class() Class
+	// Editor 编辑形态: admin 表单的控件名（text/textarea/richtext/number/bool/
+	// upload-image/upload-file/ref/ref[]）。自定义 kind 声明复用现有控件即
+	// 可在后台编辑 — 接口抽象因此对前端完整（不再按 kind 名硬编码）。
+	Editor() string
 	// ValidateField 字段定义校验: 本 kind 对 FieldDef 的约束。
 	// 通用校验（类型名/字段名/重复/kind 存在）由容器做;
 	// 这里只做 kind 特有规则（标量禁代数 / ref 要 to / 代数互斥）。

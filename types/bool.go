@@ -17,4 +17,5 @@ func (boolKind) IsEmpty(v any) bool { _, ok := v.(bool); return !ok }
 func (boolKind) ValidateField(t *Types, typeName string, f FieldDef, defs map[string]TypeDef) error {
 	return rejectRefAttrs(typeName, f)
 }
-func (boolKind) Class() Class { return ClassField }
+func (boolKind) Class() Class   { return ClassField }
+func (boolKind) Editor() string { return "bool" }
