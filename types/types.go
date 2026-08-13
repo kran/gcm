@@ -133,6 +133,18 @@ func (t *Types) Load(raw []byte) error {
 	if len(cfg.Types) == 0 {
 		return errors.New("types: no types defined")
 	}
+	// strings 简写归一: array<string>（cmx 同款 — 配置书写便捷）
+	for name := range cfg.Types {
+		td := cfg.Types[name]
+		for i, f := range td.Fields {
+			if f.Kind == "strings" {
+				f.Kind = "array"
+				f.Item = &FieldDef{Kind: "string"}
+				td.Fields[i] = f
+			}
+		}
+		cfg.Types[name] = td
+	}
 	// 编辑形态回填: 每个字段的 editor = kind.Editor()（admin 前端渲染依据）;
 	// 复合字段（array/object）的 editor = kind 名本身（前端对应分支）。
 	for name := range cfg.Types {
@@ -409,8 +421,10 @@ func (t *Types) ValidateValue(typeName string, f FieldDef, v any) error {
 		if !ok {
 			return fmt.Errorf("types: %q.%s: expects array, got %T", typeName, f.Name, v)
 		}
+		elem := *f.Item
+		elem.Required = false // 元素的 required 无意义（存在即元素, cmx 同款）
 		for i, e := range arr {
-			if err := t.ValidateValue(typeName, *f.Item, e); err != nil {
+			if err := t.ValidateValue(typeName, elem, e); err != nil {
 				return fmt.Errorf("types: %q.%s[%d]: %w", typeName, f.Name, i, err)
 			}
 		}
@@ -431,6 +445,15 @@ func (t *Types) ValidateValue(typeName string, f FieldDef, v any) error {
 			}
 			if err := t.ValidateValue(typeName, sub, subV); err != nil {
 				return err
+			}
+		}
+		// 子字段 required（cmx validateFields 递归同款语义）
+		for _, sub := range f.Fields {
+			if !sub.Required {
+				continue
+			}
+			if subV, ok := obj[sub.Name]; !ok || t.isEmpty(sub.Kind, subV) {
+				return fmt.Errorf("types: %q.%s: required sub-field %q missing", typeName, f.Name, sub.Name)
 			}
 		}
 		return nil
@@ -478,6 +501,14 @@ func (t *Types) ValidateFields(typeName string, fields map[string]any) error {
 }
 
 func (t *Types) isEmpty(kind string, v any) bool {
+	switch kind {
+	case "array":
+		arr, ok := v.([]any)
+		return !ok || len(arr) == 0
+	case "object":
+		obj, ok := v.(map[string]any)
+		return !ok || len(obj) == 0
+	}
 	k, ok := t.kinds[kind]
 	if !ok {
 		return true

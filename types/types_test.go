@@ -405,3 +405,32 @@ types:
 		t.Fatal("object without fields must fail")
 	}
 }
+
+// cmx 语义补齐: strings 归一 + object 子字段 required + array 元素 required 忽略。
+func TestCompositeCmxSemantics(t *testing.T) {
+	raw := `
+types:
+  page:
+    fields:
+      - { name: tags, kind: strings }  # 简写 → array<string>
+      - { name: meta, kind: object, fields:
+            [ { name: og_title, kind: string, required: true } ] }
+`
+	ts := New()
+	if err := ts.Load([]byte(raw)); err != nil {
+		t.Fatal(err)
+	}
+	// strings 归一: kind 变 array
+	td, _ := ts.Type("page")
+	if td.Fields[0].Kind != "array" || td.Fields[0].Item == nil || td.Fields[0].Item.Kind != "string" {
+		t.Fatalf("strings must normalize to array<string>: %+v", td.Fields[0])
+	}
+	// object 子字段 required 缺 → 拒绝
+	if err := ts.ValidateFields("page", map[string]any{"tags": []any{"a"}, "meta": map[string]any{}}); err == nil {
+		t.Fatal("required sub-field must be enforced")
+	}
+	// 合法
+	if err := ts.ValidateFields("page", map[string]any{"tags": []any{"a"}, "meta": map[string]any{"og_title": "x"}}); err != nil {
+		t.Fatalf("valid: %v", err)
+	}
+}
