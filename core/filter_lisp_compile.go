@@ -358,23 +358,25 @@ func (c *lispCompiler) throughRec(segs []lispExpr, targetCmp lispExpr, i int, li
 	return c.varRef(frag, segName), nil
 }
 
-// inFn: (in 字段 (subtree "slug")) — 集合函数返回 id 列表参数。
+// inFn: (in 字段 集合) — 集合 = 占位符数组 {:ids} 或集合函数 (subtree ...)。
 func (c *lispCompiler) inFn(args []lispExpr) (string, error) {
 	if len(args) != 2 {
 		return "", fmt.Errorf("filter-lisp: in takes 2 args")
 	}
 	field, _ := pathOfC(args[0])
-	// 集合函数（subtree）注册一个"参数槽" var — 值 = id 列表
-	// 设计: 集合函数返回 ${eN}（var 带 id 列表参数）; in 引用它并拼 expand
+	// 形态一: 占位符数组 (in categories {:ids}) — params 绑定数组 → expand
+	if p, ok := args[1].atom.(placeholder); ok {
+		val, err := valueParam(p, c.params)
+		if err != nil {
+			return "", err
+		}
+		return c.varRef("EXISTS(SELECT 1 FROM edges WHERE field = #{1} AND from_node = nodes.id AND to_node IN (#{2|expand}))", field, val), nil
+	}
+	// 形态二: 集合函数 (in categories (subtree "root")) — 返回 id 切片参数
 	setRef, setArgs, err := c.call(args[1])
 	if err != nil {
 		return "", err
 	}
-	// 集合函数协议: 返回 id 切片（一个参数）; in 用 expand 展开。
-	// setRef 是 ${eN} 引用（subtree — var 带 id 切片参数）或字面量（自定义函数）。
-	// setArgs 是自定义函数的直接参数（含 id 切片）— 并入 in 的 var。
-	// subtree: setArgs 为 nil（id 切片已在 var 的 args 里）— in 引用 ${eN}。
-	// 统一: setArgs 若有, 追加到 field 后; expand 用 #{2|expand}。
 	if len(setArgs) > 0 {
 		// 自定义函数直接参数（id 切片）— 拼 expand
 		allArgs := append([]any{field}, setArgs...)

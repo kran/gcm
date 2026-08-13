@@ -181,3 +181,36 @@ func TestLispGetTargetCmp(t *testing.T) {
 		t.Fatalf("atomic = target: %d", n)
 	}
 }
+
+// 占位符数组形态: (in categories {:ids}) — params 绑定 id 数组。
+func TestLispInPlaceholderArray(t *testing.T) {
+	s := newFilterSvc(t)
+	root, _ := s.Create(&Node{Type: "category", Slug: "root", Fields: Fields{"name": "根"}})
+	child, _ := s.Create(&Node{Type: "category", Slug: "child", Fields: Fields{"name": "子", "parent": root}})
+	other, _ := s.Create(&Node{Type: "category", Slug: "other", Fields: Fields{"name": "旁"}})
+	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "甲", "categories": []any{child}}})
+	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "乙", "categories": []any{other}}})
+
+	exec := func(ids []any) int {
+		t.Helper()
+		q := s.db.Add(`SELECT * FROM nodes WHERE ${where}`)
+		q, err := s.CompileLispInto(q, `(in categories {:ids})`, "article", map[string]any{"ids": ids})
+		if err != nil {
+			t.Fatalf("compile: %v", err)
+		}
+		var rows []Node
+		if err := q.List(&rows); err != nil {
+			t.Fatalf("exec: %v", err)
+		}
+		return len(rows)
+	}
+	if n := exec([]any{child}); n != 1 {
+		t.Fatalf("单 id: %d", n)
+	}
+	if n := exec([]any{child, other}); n != 2 {
+		t.Fatalf("双 id: %d", n)
+	}
+	if n := exec([]any{root}); n != 0 {
+		t.Fatalf("无关 id: %d", n)
+	}
+}

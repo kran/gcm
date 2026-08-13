@@ -21,7 +21,9 @@ package gcm
 import (
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/kran/dba"
 	"github.com/kran/gcm/core"
@@ -87,6 +89,7 @@ func (a *App[T]) build(spec SiteSpec[T]) (*web.Site, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
+	db = db.SetLogger(dba.NewLogger(slog.Default(), time.Second*1, false))
 	if err := migrations.Up(db); err != nil {
 		return nil, err
 	}
