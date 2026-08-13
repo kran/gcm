@@ -155,16 +155,10 @@ func (e *Engine) queryFuncs() template.FuncMap {
 			fail(err)
 			return ids
 		},
-		// filterList: filter 筛选列表（表达式+占位符参数+分页）。
-		// 用法: {{ filterList "article" "status = 1 && categories ~ {:c}" (dict "c" 5) 1 10 }}
-		// params 传 nil 表示无占位符; 排序与 List 一致（sort DESC）。
+		// filterList: Lisp filter 筛选列表（表达式 + 分页）。
+		// 用法: {{ filterList "article" "(and (= status 1) (in categories (subtree {:slug})))" (dict "slug" "x") 1 10 }}
 		"filterList": func(typ, expr string, params map[string]any, page, size int) []core.Node {
-			cf, err := e.core.CompileFilter(expr)
-			fail(err)
-			where, args, err := e.core.BuildFilter(cf, typ, params)
-			fail(err)
-			// 链式分段: filter 片段作为独立 Add 段（占位符从 #{1} 起）
-			list, _, err := e.core.ListFiltered(typ, where, args, page, size)
+			list, _, err := e.core.ListQ(core.ListQuery{Type: typ, Filter: expr, Page: page, Size: size})
 			fail(err)
 			return list
 		},

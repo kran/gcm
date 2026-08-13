@@ -41,8 +41,8 @@ type Service struct {
 	types       *types.Types
 	search      SearchIndex // 全文检索引擎（默认 FTS5+bigram; SetSearchIndex 可换）
 	hooks       *hook.Bus
-	filterCache sync.Map            // filter 表达式 → *CompiledFilter（编译缓存, 消费方共享）
-	lispFuncs   map[string]LispFunc // Lisp filter 函数注册表（内置 + 站点扩展）
+	filterCache sync.Map             // filter 表达式 → *CompiledFilter（编译缓存, 消费方共享）
+	lispFuncsC  map[string]LispFuncC // Lisp filter 函数注册表（站点扩展; 内置在编译器）
 }
 
 // Hooks 站点级 hook 总线（注册扩展; 执行顺序 = priority 升序 + 注册序稳定）。
@@ -53,9 +53,8 @@ func (s *Service) Types() *types.Types { return s.types }
 
 // New 建引擎。
 func New(db *dba.SQL, ts *types.Types) *Service {
-	svc := &Service{db: db, dao: dba.NewDao[Node](db, "nodes"), types: ts, lispFuncs: map[string]LispFunc{}}
+	svc := &Service{db: db, dao: dba.NewDao[Node](db, "nodes"), types: ts, lispFuncsC: map[string]LispFuncC{}}
 	svc.search = NewFTSIndex(svc)
-	svc.registerBuiltinLispFuncs()
 	// 标准事件声明（注册即校验签名）
 	svc.hooks = hook.New()
 	if err := svc.hooks.Define(
@@ -556,20 +555,19 @@ type ListQuery struct {
 	Size   int
 }
 
-// ListQ 结构化查询执行: base SQL 模板 + ${where}/${order} var 槽。
-func (s *Service) ListQ(q ListQuery) ([]Node, int64, error) {
+// ListQWithParams ListQ + 占位符参数绑定（filter 里的 {:name}）。
+func (s *Service) ListQWithParams(q ListQuery, params map[string]any) ([]Node, int64, error) {
 	if q.Page < 1 {
 		q.Page = 1
 	}
 	if q.Size < 1 {
 		q.Size = 20
 	}
-	// 模板: ${where} 槽（Lisp 编译器挂载）; ${order} 槽（排序）; 分页参数
 	db := s.db.Add(`SELECT * FROM nodes WHERE ${where} ${order:ORDER BY sort, id DESC} LIMIT #{1} OFFSET #{2}`,
 		q.Size, (q.Page-1)*q.Size)
 	if q.Filter != "" {
 		var err error
-		db, err = s.CompileLispInto(db, q.Filter, q.Type, nil)
+		db, err = s.CompileLispInto(db, q.Filter, q.Type, params)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -583,11 +581,10 @@ func (s *Service) ListQ(q ListQuery) ([]Node, int64, error) {
 	if err := db.List(&rows); err != nil {
 		return nil, 0, err
 	}
-	// 总数（同 where）
 	cdb := s.db.Add(`SELECT COUNT(1) FROM nodes WHERE ${where}`)
 	if q.Filter != "" {
 		var err error
-		cdb, err = s.CompileLispInto(cdb, q.Filter, q.Type, nil)
+		cdb, err = s.CompileLispInto(cdb, q.Filter, q.Type, params)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -599,4 +596,9 @@ func (s *Service) ListQ(q ListQuery) ([]Node, int64, error) {
 		return nil, 0, err
 	}
 	return rows, total, nil
+}
+
+// ListQ 结构化查询执行: base SQL 模板 + ${where}/${order} var 槽。
+func (s *Service) ListQ(q ListQuery) ([]Node, int64, error) {
+	return s.ListQWithParams(q, nil)
 }

@@ -134,15 +134,9 @@ func setup(site *web.Site, svc *core.Service) error {
 		for i, id := range ids {
 			anyIDs[i] = id
 		}
-		cf, err := svc.CompileFilter(`categories ~ {:ids}`)
-		if err != nil {
-			return nil
-		}
-		where, args, err := svc.BuildFilter(cf, "article", map[string]any{"ids": anyIDs})
-		if err != nil {
-			return nil
-		}
-		list, _, err := svc.ListFiltered("article", where, args, 1, 50)
+		list, _, err := svc.ListQWithParams(core.ListQuery{Type: "article",
+			Filter: `(in categories {:ids})`, Page: 1, Size: 50},
+			map[string]any{"ids": anyIDs})
 		if err != nil {
 			return nil
 		}

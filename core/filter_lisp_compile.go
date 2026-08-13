@@ -30,8 +30,19 @@ type lispCompiler struct {
 	params  map[string]any
 }
 
-// lispFuncC 函数编译器（var 链版）: 返回片段（主链或 ${eN} 引用）。
-type lispFuncC func(args []lispExpr) (string, error)
+// LispFuncC 函数编译器（var 槽版）: 返回片段（${eN} 引用或字面量）。
+// 站点 RegisterLispFuncC 注册自定义函数（注册驱动 — 函数进表达式）。
+type LispFuncC func(args []lispExpr) (string, []any, error)
+
+// RegisterLispFuncC 注册自定义 Lisp filter 函数（站点扩展; 重复注册 panic）。
+// 函数签名 func(args []lispExpr) (string, error) — 需要访问 Service/上下文时
+// 用闭包捕获（注册时 svc 在作用域）。
+func (s *Service) RegisterLispFuncC(name string, fn LispFuncC) {
+	if _, dup := s.lispFuncsC[name]; dup {
+		panic(fmt.Sprintf("core: lisp func %q already registered", name))
+	}
+	s.lispFuncsC[name] = fn
+}
 
 // CompileLispInto 在 q 上挂载 ${where} var（嵌套 var 同实例 — 原样保留,
 // 不 ToSQL）。q 是调用方的 dba 链（base SQL 模板含 ${where} 槽）;
@@ -53,12 +64,12 @@ func (s *Service) CompileLispInto(q *dba.SQL, expr, typeName string, params map[
 	if !ok {
 		return nil, fmt.Errorf("filter-lisp: unknown function %q", e.head)
 	}
-	top, err := fn(e.args)
+	top, extraArgs, err := fn(e.args)
 	if err != nil {
 		return nil, err
 	}
-	// 顶层: ${where} 槽 — var 挂载（参数在此, 原样保留）
-	return c.q.Var("where", top), nil
+	// 顶层: ${where} 槽 — var 挂载（片段 + 顶层函数的直接参数）
+	return c.q.Var("where", top, extraArgs...), nil
 }
 
 // varRef 注册片段为 ${eN}, 返回引用（参数独立编号）。
@@ -69,34 +80,52 @@ func (c *lispCompiler) varRef(frag string, args ...any) string {
 	return fmt.Sprintf("${%s}", name)
 }
 
-// funcs 函数表（注册驱动; 比较操作符闭包捕获 op）。
-func (c *lispCompiler) funcs() map[string]lispFuncC {
-	m := map[string]lispFuncC{}
+// funcs 函数表: 内置（注册驱动形态）+ 站点注册合并。
+func (c *lispCompiler) funcs() map[string]LispFuncC {
+	m := map[string]LispFuncC{}
 	for _, op := range []string{"=", "!=", ">", ">=", "<", "<=", "like"} {
 		op := op
-		m[op] = func(args []lispExpr) (string, error) {
-			return c.cmp(op, args)
-		}
+		m[op] = wrap(func(args []lispExpr) (string, error) { return c.cmp(op, args) })
 	}
-	m["and"] = c.andFn
-	m["or"] = c.orFn
-	m["not"] = c.notFn
-	m["->"] = func(args []lispExpr) (string, error) { return c.refCmp(false, args) }
-	m["<-"] = func(args []lispExpr) (string, error) { return c.refCmp(true, args) }
-	m["get"] = c.throughFn
-	m["in"] = c.inFn
-	m["subtree"] = c.subtreeFn
+	m["and"] = wrap(c.andFn)
+	m["or"] = wrap(c.orFn)
+	m["not"] = wrap(c.notFn)
+	m["->"] = wrap(func(args []lispExpr) (string, error) { return c.refCmp(false, args) })
+	m["<-"] = wrap(func(args []lispExpr) (string, error) { return c.refCmp(true, args) })
+	m["get"] = wrap(c.throughFn)
+	m["in"] = wrap(c.inFn)
+	m["subtree"] = wrap(c.subtreeFn)
+	// 站点注册函数（覆盖内置? 不 — 重复注册 panic; 合并）
+	for k, v := range c.svc.lispFuncsC {
+		m[k] = v
+	}
 	return m
 }
 
-// call 编译子表达式（注册表查找）。
-func (c *lispCompiler) call(e lispExpr) (string, error) {
+// wrap 单值片段 → (frag, nil)（参数已挂 var; 站点函数可返回 (frag, args)）。
+func wrap(fn func(args []lispExpr) (string, error)) LispFuncC {
+	return func(args []lispExpr) (string, []any, error) {
+		frag, err := fn(args)
+		return frag, nil, err
+	}
+}
+
+// sqlOp 操作符 → SQL（like 保持; 其余原样）。
+func sqlOp(op string) string {
+	if op == "like" {
+		return "LIKE"
+	}
+	return op
+}
+
+// call 编译子表达式（注册表查找; 返回片段 + 直接参数）。
+func (c *lispCompiler) call(e lispExpr) (string, []any, error) {
 	if e.head == "" {
-		return "", fmt.Errorf("filter-lisp: expected call, got %v", e.atom)
+		return "", nil, fmt.Errorf("filter-lisp: expected call, got %v", e.atom)
 	}
 	fn, ok := c.funcs()[e.head]
 	if !ok {
-		return "", fmt.Errorf("filter-lisp: unknown function %q", e.head)
+		return "", nil, fmt.Errorf("filter-lisp: unknown function %q", e.head)
 	}
 	return fn(e.args)
 }
@@ -177,14 +206,14 @@ func (c *lispCompiler) logical(sep string, args []lispExpr) (string, error) {
 		if len(args) != 1 {
 			return "", fmt.Errorf("filter-lisp: not takes 1 arg")
 		}
-		frag, err := c.call(args[0])
+		frag, _, err := c.call(args[0])
 		if err != nil {
 			return "", err
 		}
 		return c.varRef("NOT (" + frag + ")"), nil
 	}
 	for _, a := range args {
-		frag, err := c.call(a)
+		frag, _, err := c.call(a)
 		if err != nil {
 			return "", err
 		}
@@ -288,7 +317,7 @@ func (c *lispCompiler) throughRec(segs []lispExpr, targetCmp lispExpr, i int, li
 		origTd, origRef := c.td, c.nodeRef
 		c.td = &htd
 		c.nodeRef = fmt.Sprintf("t%d", i+1)
-		frag, err := c.call(segExpr.args[1])
+		frag, _, err := c.call(segExpr.args[1])
 		c.td, c.nodeRef = origTd, origRef
 		if err != nil {
 			return "", err
@@ -302,7 +331,7 @@ func (c *lispCompiler) throughRec(segs []lispExpr, targetCmp lispExpr, i int, li
 		origTd, origRef := c.td, c.nodeRef
 		c.td = &htd
 		c.nodeRef = fmt.Sprintf("t%d", i+1)
-		frag, err := c.call(targetCmp)
+		frag, _, err := c.call(targetCmp)
 		c.td, c.nodeRef = origTd, origRef
 		if err != nil {
 			return "", err
@@ -332,12 +361,21 @@ func (c *lispCompiler) inFn(args []lispExpr) (string, error) {
 	field, _ := pathOfC(args[0])
 	// 集合函数（subtree）注册一个"参数槽" var — 值 = id 列表
 	// 设计: 集合函数返回 ${eN}（var 带 id 列表参数）; in 引用它并拼 expand
-	setRef, err := c.call(args[1])
+	setRef, setArgs, err := c.call(args[1])
 	if err != nil {
 		return "", err
 	}
-	// setRef 是 ${eN} — 但 in 需要"该 var 的参数作为 expand" — 当前 var 机制
-	// 不能跨 var 引用参数; 简化: 集合函数直接生成"IN 片段"（不通过 in 拼接）
+	// 集合函数协议: 返回 id 切片（一个参数）; in 用 expand 展开。
+	// setRef 是 ${eN} 引用（subtree — var 带 id 切片参数）或字面量（自定义函数）。
+	// setArgs 是自定义函数的直接参数（含 id 切片）— 并入 in 的 var。
+	// subtree: setArgs 为 nil（id 切片已在 var 的 args 里）— in 引用 ${eN}。
+	// 统一: setArgs 若有, 追加到 field 后; expand 用 #{2|expand}。
+	if len(setArgs) > 0 {
+		// 自定义函数直接参数（id 切片）— 拼 expand
+		allArgs := append([]any{field}, setArgs...)
+		return c.varRef("EXISTS(SELECT 1 FROM edges WHERE field = #{1} AND from_node = nodes.id AND to_node IN (#{2|expand}))", allArgs...), nil
+	}
+	// subtree: ${eN} 引用（其 var 含 id 切片参数）— 直接引用
 	return c.varRef("EXISTS(SELECT 1 FROM edges WHERE field = #{1} AND from_node = nodes.id AND to_node IN ("+setRef+"))", field), nil
 }
 
@@ -360,12 +398,7 @@ func (c *lispCompiler) subtreeFn(args []lispExpr) (string, error) {
 	for i, id := range ids {
 		anyIDs[i] = id
 	}
-	// 返回 IN 片段（id 列表直接展开 — 参数绑定）
-	ph := make([]string, len(anyIDs))
-	bindArgs := make([]any, len(anyIDs))
-	for i := range anyIDs {
-		ph[i] = fmt.Sprintf("#{%d}", i+1)
-		bindArgs[i] = anyIDs[i]
-	}
-	return c.varRef(strings.Join(ph, ", "), bindArgs...), nil
+	// 返回 ${eN} 引用（var 片段 = #{1|expand}, 参数 = id 切片 —
+	// in 引用展开后是 expand 占位, 参数用 subtree 自己的）
+	return c.varRef("#{1|expand}", anyIDs), nil
 }

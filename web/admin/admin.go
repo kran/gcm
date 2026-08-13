@@ -231,26 +231,19 @@ func (b *backend) listNodes(ctx *web.CmsCtx) {
 	var err error
 	filter := strings.TrimSpace(ctx.Query("filter"))
 	q := strings.TrimSpace(ctx.Query("q"))
-	var params map[string]any
+	// filter = Lisp 表达式; q = 标题模糊（合成 (like title {:q})）
+	params := map[string]any{}
 	if q != "" {
+		params["q"] = "%" + q + "%"
 		if filter != "" {
-			filter += " && "
+			filter = "(and " + filter + " (like title {:q}))"
+		} else {
+			filter = "(like title {:q})"
 		}
-		filter += "title like {:q}"
-		params = map[string]any{"q": "%" + q + "%"}
 	}
 	if filter != "" {
-		cf, cerr := b.core.CompileFilter(filter)
-		if cerr != nil {
-			b.bad(ctx, cerr)
-			return
-		}
-		where, args, cerr := b.core.BuildFilter(cf, typ, params)
-		if cerr != nil {
-			b.bad(ctx, cerr)
-			return
-		}
-		list, total, err = b.core.ListFiltered(typ, where, args, page, size)
+		lq := core.ListQuery{Type: typ, Filter: filter, Page: page, Size: size}
+		list, total, err = b.core.ListQWithParams(lq, params)
 	} else {
 		list, total, err = b.core.List(typ, -1, page, size)
 	}

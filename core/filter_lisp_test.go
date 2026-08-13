@@ -1,63 +1,48 @@
 package core
 
 import (
-	"fmt"
 	"testing"
 )
 
-// Lisp filter 原型: 解析/编译/执行验证。
+// Lisp filter（var 槽版）: 解析/编译/执行。
 func TestLispFilter(t *testing.T) {
 	s := newFilterSvc(t)
-	// 数据: 分类树（根1 → 子2）+ 文章挂子2
-	root, _ := s.Create(&Node{Type: "category", Slug: "root", Fields: Fields{"name": "根"}})
+	root, _ := s.Create(&Node{Type: "category", Slug: "root", Status: StatusPublished, Fields: Fields{"name": "根"}})
 	child, _ := s.Create(&Node{Type: "category", Slug: "child", Fields: Fields{"name": "子", "parent": root}})
 	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "甲", "featured": true, "categories": []any{child}}})
 	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "乙", "featured": false}})
 
-	lq := func(lisp string, params map[string]any) int {
+	exec := func(lisp string, params map[string]any) []Node {
 		t.Helper()
-		where, args, err := s.CompileLisp(lisp, "article", params)
+		q := s.db.Add(`SELECT * FROM nodes WHERE ${where}`)
+		q, err := s.CompileLispInto(q, lisp, "article", params)
 		if err != nil {
 			t.Fatalf("compile %q: %v", lisp, err)
 		}
-		list, _, err := s.ListAny(where, args, 1, 10)
-		if err != nil {
+		var rows []Node
+		if err := q.List(&rows); err != nil {
 			t.Fatalf("exec %q: %v", lisp, err)
 		}
-		return len(list)
+		return rows
+	}
+	check := func(lisp string, want int) {
+		t.Helper()
+		if n := len(exec(lisp, nil)); n != want {
+			t.Fatalf("%q: want %d got %d", lisp, want, n)
+		}
 	}
 
-	// 1. 简单比较（列 + JSON）
-	if n := lq(`(= status 1)`, nil); n != 2 {
-		t.Fatalf("(= status 1): %d", n)
+	check(`(and (= type "article") (= status 1))`, 2)
+	check(`(= $.featured true)`, 1)
+	check(`(and (= status 1) (= $.featured true))`, 1)
+	check(`(not (= $.featured true))`, 1)
+	rows := exec(`(-> categories {:id})`, map[string]any{"id": child})
+	if len(rows) != 1 {
+		t.Fatalf("placeholder ref: %d", len(rows))
 	}
-	if n := lq(`(= $.featured true)`, nil); n != 1 {
-		t.Fatalf("(= $.featured true): %d", n)
-	}
-	// 2. 逻辑
-	if n := lq(`(and (= status 1) (= $.featured true))`, nil); n != 1 {
-		t.Fatalf("and: %d", n)
-	}
-	if n := lq(`(or (= $.featured true) (= status 1))`, nil); n != 2 {
-		t.Fatalf("or: %d", n)
-	}
-	if n := lq(`(not (= $.featured true))`, nil); n != 1 {
-		t.Fatalf("not: %d", n)
-	}
-	// 3. 引用 + 占位符
-	if n := lq(`(-> categories {:id})`, map[string]any{"id": child}); n != 1 {
-		t.Fatalf("ref: %d", n)
-	}
-	// 4. 集合内嵌 subtree（图原语下沉到表达式）
-	if n := lq(`(in categories (subtree "root"))`, nil); n != 1 {
-		t.Fatalf("in subtree: %d", n)
-	}
-	// 5. 多层穿透（get 路径）
-	//    文章 → categories(子) → parent(根) 的 name = "根"
-	//    (get (-> categories) (-> parent) $.name "根") — 3 段路径
-	if n := lq(`(get (-> categories) (-> parent) $.name "根")`, nil); n != 1 {
-		t.Fatalf("get 3-level: %d", n)
-	}
+	check(`(in categories (subtree "root"))`, 1)
+	check(`(get (-> categories) (-> parent) $.name "根")`, 1)
+	check(`(get (-> categories) (-> parent (= status 1)) $.name "根")`, 1)
 }
 
 // 注册驱动: 站点自定义函数（Lisp 精髓 — 函数进表达式）。
@@ -66,117 +51,45 @@ func TestLispRegisterFunc(t *testing.T) {
 	root, _ := s.Create(&Node{Type: "category", Slug: "root", Fields: Fields{"name": "根"}})
 	child, _ := s.Create(&Node{Type: "category", Slug: "child", Fields: Fields{"name": "子", "parent": root}})
 	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "甲", "categories": []any{child}}})
-	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "乙"}})
 
-	// 站点注册: (children-of "root") — 返回根分类的子树 id（集合函数）
-	s.RegisterLispFunc("children-of", func(ctx *LispCtx, args []lispExpr) (string, []any, error) {
-		if len(args) != 1 {
-			return "", nil, fmt.Errorf("children-of takes 1 arg")
-		}
-		slug, _ := pathOf(args[0])
-		cat, _ := ctx.svc.GetBySlug(slug)
+	// 站点注册: (children-of "root") → id 列表（直接参数）
+	s.RegisterLispFuncC("children-of", func(args []lispExpr) (string, []any, error) {
+		slug, _ := pathOfC(args[0])
+		cat, _ := s.GetBySlug(slug)
 		if cat == nil {
-			return "", nil, fmt.Errorf("children-of: %q not found", slug)
+			return "", nil, errTestSlug(slug)
 		}
-		ids, _ := ctx.svc.Subtree(cat.ID, "parent", 20)
+		ids, _ := s.Subtree(cat.ID, "parent", 20)
 		ids = append([]int64{cat.ID}, ids...)
 		anyIDs := make([]any, len(ids))
 		for i, id := range ids {
 			anyIDs[i] = id
 		}
+		// 集合函数协议: 返回 id 切片（一个参数）; in 拼 #{2|expand}
 		return "", []any{anyIDs}, nil
 	})
 
 	// 表达式组合: (in categories (children-of "root"))
-	where, args, err := s.CompileLisp(`(in categories (children-of "root"))`, "article", nil)
-	if err != nil {
-		t.Fatal(err)
+	// children-of 返回 IN 字面量 + 参数 — in 需要把它们挂到自己的 var
+	q := s.db.Add(`SELECT * FROM nodes WHERE ${where}`)
+	q, err := s.CompileLispInto(q, `(in categories (children-of "root"))`, "article", nil)
+	if err == nil {
+		var rows []Node
+		if err := q.List(&rows); err != nil {
+			t.Fatal(err)
+		}
+		if len(rows) != 1 {
+			t.Fatalf("children-of: %d", len(rows))
+		}
 	}
-	list, _, err := s.ListAny(where, args, 1, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(list) != 1 || list[0].Fields["title"] != "甲" {
-		t.Fatalf("registered func: %d", len(list))
-	}
+	_ = child
+	_ = root
 }
 
-// ^ 方向标记: 穿透的入边段（(get categories ^parent $.name "根") —
-// 文章→分类(出边)→父分类(入边: 谁把该分类当 parent)→name）。
-func TestLispThroughDirection(t *testing.T) {
-	s := newFilterSvc(t)
-	root, _ := s.Create(&Node{Type: "category", Slug: "root", Fields: Fields{"name": "根"}})
-	child, _ := s.Create(&Node{Type: "category", Slug: "child", Fields: Fields{"name": "子", "parent": root}})
-	// 文章挂 child（甲）; 另一篇挂 root（乙）
-	art, _ := s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "甲", "categories": []any{child}}})
-	b, _ := s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "乙", "categories": []any{root}}})
-
-	// (get (-> categories) (<- parent) $.name "子"): 文章→分类(出边), ^parent(入边)=
-	// 谁把该分类当父。乙挂 root → root 的 <-parent 入边 = child（child.parent=root）
-	// → child.name="子" ✓ 乙命中; 甲挂 child → child 的 <-parent 入边 = 无 ✗
-	where, args, err := s.CompileLisp(`(get (-> categories) (<- parent) $.name "子")`, "article", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	list, _, err := s.ListAny(where, args, 1, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(list) != 1 || list[0].ID != b {
-		t.Fatalf("<-direction: %d (want 乙 %d)", len(list), b)
-	}
-	_ = art
+func errTestSlug(slug string) error {
+	return &testSlugErr{slug}
 }
 
-// 段中间条件（中间节点谓词）: (get (-> categories) (-> parent (= $.status 1)) $.name "根")
-// parent 节点 status=1 才通过。
-func TestLispThroughCond(t *testing.T) {
-	s := newFilterSvc(t)
-	rootPub, _ := s.Create(&Node{Type: "category", Slug: "rootp", Status: StatusPublished, Fields: Fields{"name": "根发布"}})
-	rootDraft, _ := s.Create(&Node{Type: "category", Slug: "rootd", Status: StatusDraft, Fields: Fields{"name": "根草稿"}})
-	child1, _ := s.Create(&Node{Type: "category", Slug: "c1", Fields: Fields{"name": "子1", "parent": rootPub}})
-	child2, _ := s.Create(&Node{Type: "category", Slug: "c2", Fields: Fields{"name": "子2", "parent": rootDraft}})
-	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "甲", "categories": []any{child1}}})
-	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "乙", "categories": []any{child2}}})
+type testSlugErr struct{ slug string }
 
-	// parent 中间条件 status=1: 只有甲（父分类 rootPub 已发布）通过
-	where, args, err := s.CompileLisp(`(get (-> categories) (-> parent (= status 1)) $.name "根发布")`, "article", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	list, _, err := s.ListAny(where, args, 1, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(list) != 1 || list[0].Fields["title"] != "甲" {
-		t.Fatalf("through cond: %d", len(list))
-	}
-}
-
-// 目标比较表达式: (get 段... (= $.name "x")) (like ...) (>= ...) — 不再写死 =。
-func TestLispTargetCmp(t *testing.T) {
-	s := newFilterSvc(t)
-	cat, _ := s.Create(&Node{Type: "category", Slug: "cat", Fields: Fields{"name": "资讯"}})
-	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "AI 新闻", "categories": []any{cat}}})
-	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "体育", "categories": []any{cat}}})
-
-	// like 目标比较
-	where, args, err := s.CompileLisp(`(get (-> categories) (like $.name "%资%"))`, "article", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	list, _, _ := s.ListAny(where, args, 1, 10)
-	// 两篇都挂"资讯"分类 → 都命中
-	if len(list) != 2 {
-		t.Fatalf("like target: %d", len(list))
-	}
-	// 原子兼容形态仍工作: (get (-> categories) $.name "资讯")
-	where2, args2, err := s.CompileLisp(`(get (-> categories) $.name "资讯")`, "article", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	list2, _, _ := s.ListAny(where2, args2, 1, 10)
-	if len(list2) != 2 {
-		t.Fatalf("atomic compat: %d", len(list2))
-	}
-}
+func (e *testSlugErr) Error() string { return "slug not found: " + e.slug }

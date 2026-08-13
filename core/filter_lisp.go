@@ -15,8 +15,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-
-	"github.com/kran/gcm/types"
 )
 
 // ── AST ──────────────────────────────────────────
@@ -26,29 +24,6 @@ type lispExpr struct {
 	atom any    // 原子值（string/float64/bool/placeholder）; 列表时 nil
 	head string // 函数名（列表时）
 	args []lispExpr
-}
-
-// ── 编译上下文 ───────────────────────────────────
-
-// LispCtx 编译上下文: 注册表 + 宿主类型（穿透时变化）+ 参数/占位符。
-type LispCtx struct {
-	svc     *Service
-	funcs   map[string]LispFunc
-	td      *types.TypeDef // 当前宿主类型（get 穿透逐层变化）
-	params  map[string]any
-	g       phGen
-	nodeRef string // 当前节点引用（"nodes" 顶层; 穿透段条件 = "t{i}"）
-}
-
-// LispFunc 函数编译器: args 是函数参数（可嵌套表达式）。
-type LispFunc func(ctx *LispCtx, args []lispExpr) (string, []any, error)
-
-// RegisterLispFunc 注册自定义 filter 函数（站点扩展; 重复注册 panic）。
-func (s *Service) RegisterLispFunc(name string, fn LispFunc) {
-	if _, dup := s.lispFuncs[name]; dup {
-		panic(fmt.Sprintf("core: lisp func %q already registered", name))
-	}
-	s.lispFuncs[name] = fn
 }
 
 // ── Parser（括号递归, ~60 行）────────────────────
@@ -156,71 +131,34 @@ func atomOf(tok string) lispExpr {
 	return lispExpr{atom: tok}
 }
 
-// ── 编译入口 ─────────────────────────────────────
+// ── 占位符（{:name}）──────────────────────────────
 
-// CompileLisp 编译 Lisp filter 表达式 → (where 片段, args)。
-// 字段校验用 typeName 的类型定义; params 是占位符绑定。
-func (s *Service) CompileLisp(expr, typeName string, params map[string]any) (string, []any, error) {
-	e, err := parseLisp(expr)
-	if err != nil {
-		return "", nil, err
-	}
-	td, ok := s.types.Type(typeName)
-	if !ok {
-		return "", nil, fmt.Errorf("core: type %q not defined", typeName)
-	}
-	idx := 1
-	ctx := &LispCtx{svc: s, funcs: s.lispFuncs, td: &td, params: params, g: phGen{&idx}, nodeRef: "nodes"}
-	if e.head == "" {
-		return "", nil, fmt.Errorf("filter-lisp: top-level must be a call")
-	}
-	fn, ok := s.lispFuncs[e.head]
-	if !ok {
-		return "", nil, fmt.Errorf("filter-lisp: unknown function %q", e.head)
-	}
-	return fn(ctx, e.args)
-}
+// placeholder 占位符值（编译时经 params 绑定）。
+type placeholder struct{ name string }
 
-// lispCall 编译子表达式（注册表查找 — 递归/组合的核心）。
-func (ctx *LispCtx) lispCall(e lispExpr) (string, []any, error) {
-	if e.head == "" {
-		return "", nil, fmt.Errorf("filter-lisp: expected call, got %v", e.atom)
-	}
-	fn, ok := ctx.funcs[e.head]
-	if !ok {
-		return "", nil, fmt.Errorf("filter-lisp: unknown function %q", e.head)
-	}
-	return fn(ctx, e.args)
-}
-
-// ── 工具 ─────────────────────────────────────────
-
-// valueOf 原子/占位符 → 参数值。
-func (ctx *LispCtx) valueOf(v lispExpr) (any, error) {
-	if v.head != "" {
-		return nil, fmt.Errorf("filter-lisp: expected value, got (%s ...)", v.head)
-	}
-	return valueParam(v.atom, ctx.params)
-}
-
-// pathOf 原子路径（列/$.字段）。
-func pathOf(v lispExpr) (string, error) {
-	if v.head != "" {
-		return "", fmt.Errorf("filter-lisp: expected path, got (%s ...)", v.head)
-	}
-	p, ok := v.atom.(string)
-	if !ok {
-		return "", fmt.Errorf("filter-lisp: path must be string")
-	}
-	return p, nil
-}
-
-// refTargetType 宿主类型里引用字段的目标类型。
-func (ctx *LispCtx) refTargetType(field string) (string, error) {
-	for _, f := range ctx.td.Fields {
-		if f.Name == field && ctx.svc.types.IsRefKind(f.Kind) {
-			return f.To, nil
+// valueParam 值/占位符/数组 → 参数值（数组元素逐个解析占位符）。
+func valueParam(v any, params map[string]any) (any, error) {
+	switch t := v.(type) {
+	case placeholder:
+		val, ok := params[t.name]
+		if !ok {
+			return nil, fmt.Errorf("filter-lisp: placeholder {: %s} not bound", t.name)
 		}
+		return val, nil
+	case []any:
+		out := make([]any, len(t))
+		for i, item := range t {
+			if p, ok := item.(placeholder); ok {
+				val, ok := params[p.name]
+				if !ok {
+					return nil, fmt.Errorf("filter-lisp: placeholder {: %s} not bound", p.name)
+				}
+				out[i] = val
+			} else {
+				out[i] = item
+			}
+		}
+		return out, nil
 	}
-	return "", fmt.Errorf("filter-lisp: %q not a ref field on %q", field, ctx.td.Name)
+	return v, nil
 }
