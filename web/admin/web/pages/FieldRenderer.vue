@@ -56,7 +56,7 @@
                 <!-- 数组 -->
                 <div v-else-if="f.kind === 'array'" class="fr-array">
                     <!-- 字符串数组 → 标签输入 -->
-                    <el-select v-if="f.item && f.item.kind === 'string'" multiple allow-create filterable
+                    <el-select v-if="f.item && f.item.kind === 'text'" multiple allow-create filterable
                         default-first-option :model-value="get(f.name) || []"
                         @update:model-value="set(f.name, $event)" placeholder="回车添加标签" style="width:100%;" />
                     <!-- 复合数组 → 卡片列表 (递归) -->
