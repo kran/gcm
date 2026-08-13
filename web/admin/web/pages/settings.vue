@@ -141,6 +141,7 @@ export default {
             this.dialog.group = r ? r.group : ''
             // gcm 后端已解码 Value（cmx 是 JSON 字符串需 parse — 移植时删）
             let v = r ? r.value : {}
+            console.log('[settings] openEdit r=', r, 'v=', v)
             // 类型以存库为准（string/text/file/richtext 值都是字符串, 反推不可靠）
             const ed = this.toEditable(v)
             ed.kind = r ? r.type : 'object' // 新建默认 object
@@ -148,6 +149,7 @@ export default {
             this.dialog.scalar = ed.scalar
             this.dialog.entries = ed.entries
             this.dialog.array = ed.array
+            console.log('[settings] ed=', ed, 'dialog.kind=', this.dialog.kind, 'scalar=', this.dialog.scalar)
             this.dialog.visible = true
         },
         async doSave() {
