@@ -523,7 +523,8 @@ func ToID(v any) (int64, error) {
 // 展开、分页 — 内部用 dba var 槽（${where} ${order}）组合, 不拼字符串。
 // Lisp filter 编译器（CompileLispInto）作为 ${where} 槽的挂载器。
 type ListQuery struct {
-	Type   string // 查询类型（Lisp filter 编译的字段校验依据; 空 = 无类型过滤）
+	Type   string // 类型过滤（合成 (= type "x") 条件; 空 = 不过滤类型）
+	Host   string // 编译宿主（Lisp 字段校验依据; 空 = Type）
 	Filter string // Lisp filter 表达式（空 = 不过滤）
 	Sort   string // 排序（空 = 默认 ORDER BY sort, id DESC）
 	Expand string // 展开表达式（预留）
@@ -540,7 +541,7 @@ func (s *Service) ListQWithParams(q ListQuery, params map[string]any) ([]Node, i
 		q.Size = 20
 	}
 	// type 条件合成进 filter（列比较, 参数化）: (and (= type "xxx") <user filter>)
-	// — ListQ.Type 的语义 = 类型过滤（不只编译宿主）
+	// — ListQ.Type 的语义 = 类型过滤; Host = 编译宿主（字段校验; 空 = Type）
 	whereExpr := q.Filter
 	if q.Type != "" {
 		if whereExpr != "" {
@@ -549,11 +550,15 @@ func (s *Service) ListQWithParams(q ListQuery, params map[string]any) ([]Node, i
 			whereExpr = `(= type "` + q.Type + `")`
 		}
 	}
+	host := q.Host
+	if host == "" {
+		host = q.Type
+	}
 	db := s.db.Add(`SELECT * FROM nodes WHERE ${where} ${order:ORDER BY sort, id DESC} LIMIT #{1} OFFSET #{2}`,
 		q.Size, (q.Page-1)*q.Size)
 	if whereExpr != "" {
 		var err error
-		db, err = s.CompileLispInto(db, whereExpr, q.Type, params)
+		db, err = s.CompileLispInto(db, whereExpr, host, params)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -570,7 +575,7 @@ func (s *Service) ListQWithParams(q ListQuery, params map[string]any) ([]Node, i
 	cdb := s.db.Add(`SELECT COUNT(1) FROM nodes WHERE ${where}`)
 	if whereExpr != "" {
 		var err error
-		cdb, err = s.CompileLispInto(cdb, whereExpr, q.Type, params)
+		cdb, err = s.CompileLispInto(cdb, whereExpr, host, params)
 		if err != nil {
 			return nil, 0, err
 		}
