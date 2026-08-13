@@ -90,6 +90,32 @@ func main() {
 		return append([]int64{catID}, chain...)
 	})
 
+	// 分类子树文章: Subtree 集合 → filter 数组（categories ~ {:ids}）→ 列表。
+	// 模板一行调用（node--category.html / 任何分类上下文）; 不依赖路由注入。
+	site.Func("articlesOf", func(catID int64) []core.Node {
+		ids, err := subtreeIDs(svc, catID) // 含自身（Subtree 本身不含起点）
+		if err != nil {
+			return nil
+		}
+		anyIDs := make([]any, len(ids))
+		for i, id := range ids {
+			anyIDs[i] = id
+		}
+		cf, err := svc.CompileFilter(`categories ~ {:ids}`)
+		if err != nil {
+			return nil
+		}
+		where, args, err := svc.BuildFilter(cf, "article", map[string]any{"ids": anyIDs})
+		if err != nil {
+			return nil
+		}
+		list, _, err := svc.ListFiltered("article", where, args, 1, 50)
+		if err != nil {
+			return nil
+		}
+		return list
+	})
+
 	// 站点自定义路由（Go 层查数据, 模板纯展示）
 	site.Get("/", func(ctx *web.CmsCtx) {
 		latest, _, err := svc.List("article", core.StatusPublished, 1, 5)

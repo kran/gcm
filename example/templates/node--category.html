@@ -1,13 +1,11 @@
 {{ partial "partials/head.html" (merge (dict "Title" .Node.Fields.name) .) }}
 <main><div class="container">
   <h2 style="font-size:20px;">{{ .Node.Fields.name }}（含子分类）</h2>
-  {{ $found := false }}
-  {{ range $sid := .SubtreeIDs }}{{ range inRefs $sid "categories" 1 50 }}{{ $found = true }}
+  {{ range articlesOf .Node.ID }}
   <div class="card">
     <h3><a href="/node/{{ .Slug }}" style="color:#1e3a5f;">{{ .Fields.title }}</a></h3>
     <div class="meta">{{ datefmt .CreatedAt "2006-01-02" }}</div>
   </div>
-  {{ end }}{{ end }}
-  {{ if not $found }}<p style="color:#9ca3af;">暂无内容</p>{{ end }}
+  {{ else }}<p style="color:#9ca3af;">暂无内容</p>{{ end }}
 </div></main>
 {{ partial "partials/footer.html" . }}
