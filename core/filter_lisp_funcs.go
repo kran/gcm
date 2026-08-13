@@ -175,23 +175,36 @@ func (ctx *LispCtx) refCmp(name string, args []lispExpr, in bool) (string, []any
 // 段表达式: (方向 字段 [条件]) — 方向 ->/<-; 字段; 可选条件（中间节点谓词）。
 // 最后两参: 目标字段 + 值（目标字段可比 $. 或列）。
 func (ctx *LispCtx) through(args []lispExpr) (string, []any, error) {
-	if len(args) < 4 {
-		return "", nil, fmt.Errorf("filter-lisp: get takes segments + target field + value")
+	if len(args) < 2 {
+		return "", nil, fmt.Errorf("filter-lisp: get takes segments + target comparison")
 	}
-	// 最后两参: 目标字段 + 值; 前面是段表达式
-	val, err := ctx.valueOf(args[len(args)-1])
-	if err != nil {
-		return "", nil, err
+	// 最后参数: 目标比较表达式（(= $.name "x") (like $.title "AI") ...）;
+	// 兼容原子形态: 最后一个原子 = 字段, 倒数第二 = 值 → 默认 = 比较
+	var targetCmp lispExpr
+	segs := args
+	last := args[len(args)-1]
+	if last.head == "" {
+		// 原子兼容: (get 段... 字段 值) → 默认 = 比较
+		if len(args) < 4 {
+			return "", nil, fmt.Errorf("filter-lisp: get needs target comparison")
+		}
+		val, err := ctx.valueOf(args[len(args)-1])
+		if err != nil {
+			return "", nil, err
+		}
+		targetCmp = lispExpr{head: "=", args: []lispExpr{args[len(args)-2], {atom: val}}}
+		segs = args[:len(args)-2]
+	} else {
+		targetCmp = last
+		segs = args[:len(args)-1]
 	}
-	targetSeg := args[len(args)-2]
-	segs := args[:len(args)-2]
-	return ctx.throughRec(segs, val, targetSeg, 0, "nodes.id")
+	return ctx.throughRec(segs, targetCmp, 0, "nodes.id")
 }
 
 // throughRec 递归编译穿透: 每段一层 EXISTS, 别名唯一（e{i}/t{i}）。
 // 段 = 表达式 (方向 字段 [条件]): 方向 ->/<- 全显式; 条件 = 中间节点谓词
 // （如 parent 的 status=1）— 编译进该段 EXISTS 的 AND。
-func (ctx *LispCtx) throughRec(segs []lispExpr, val any, targetSeg lispExpr, i int, link string) (string, []any, error) {
+func (ctx *LispCtx) throughRec(segs []lispExpr, targetCmp lispExpr, i int, link string) (string, []any, error) {
 	var err error
 	segExpr := segs[i]
 	if segExpr.head == "" {
@@ -247,19 +260,27 @@ func (ctx *LispCtx) throughRec(segs []lispExpr, val any, targetSeg lispExpr, i i
 	var inner string
 	var innerArgs []any
 	if i == len(segs)-1 {
-		// 最后一层: 目标字段在 t{i+1} 上
+		// 最后一层: 目标比较在 t{i+1} 上（与中间条件同构 — lispCall + nodeRef
+		// + 宿主切到末层段的目标类型）
 		ta := fmt.Sprintf("t%d", i+1)
-		targetField, _ := pathOf(targetSeg)
-		if strings.HasPrefix(targetField, "$.") {
-			f2 := strings.TrimPrefix(targetField, "$.")
-			inner = "json_extract(" + ta + ".fields, " + ctx.g.bind() + ") = " + ctx.g.bind()
-			innerArgs = []any{"$." + f2, val}
-		} else {
-			inner = ta + "." + ctx.g.quote() + " = " + ctx.g.bind()
-			innerArgs = []any{targetField, val}
+		to, terr := ctx.refTargetType(segName)
+		if terr != nil {
+			return "", nil, terr
+		}
+		htd, ok := ctx.svc.types.Type(to)
+		if !ok {
+			return "", nil, fmt.Errorf("filter-lisp: type %q not defined", to)
+		}
+		origTd, origRef := ctx.td, ctx.nodeRef
+		ctx.td = &htd
+		ctx.nodeRef = ta
+		inner, innerArgs, err = ctx.lispCall(targetCmp)
+		ctx.td, ctx.nodeRef = origTd, origRef
+		if err != nil {
+			return "", nil, err
 		}
 	} else {
-		inner, innerArgs, err = ctx.throughRec(segs, val, targetSeg, i+1, fmt.Sprintf("t%d.id", i+1))
+		inner, innerArgs, err = ctx.throughRec(segs, targetCmp, i+1, fmt.Sprintf("t%d.id", i+1))
 		if err != nil {
 			return "", nil, err
 		}

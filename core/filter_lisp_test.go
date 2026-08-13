@@ -152,3 +152,31 @@ func TestLispThroughCond(t *testing.T) {
 		t.Fatalf("through cond: %d", len(list))
 	}
 }
+
+// 目标比较表达式: (get 段... (= $.name "x")) (like ...) (>= ...) — 不再写死 =。
+func TestLispTargetCmp(t *testing.T) {
+	s := newFilterSvc(t)
+	cat, _ := s.Create(&Node{Type: "category", Slug: "cat", Fields: Fields{"name": "资讯"}})
+	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "AI 新闻", "categories": []any{cat}}})
+	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "体育", "categories": []any{cat}}})
+
+	// like 目标比较
+	where, args, err := s.CompileLisp(`(get (-> categories) (like $.name "%资%"))`, "article", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, _, _ := s.ListAny(where, args, 1, 10)
+	// 两篇都挂"资讯"分类 → 都命中
+	if len(list) != 2 {
+		t.Fatalf("like target: %d", len(list))
+	}
+	// 原子兼容形态仍工作: (get (-> categories) $.name "资讯")
+	where2, args2, err := s.CompileLisp(`(get (-> categories) $.name "资讯")`, "article", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list2, _, _ := s.ListAny(where2, args2, 1, 10)
+	if len(list2) != 2 {
+		t.Fatalf("atomic compat: %d", len(list2))
+	}
+}
