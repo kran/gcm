@@ -54,20 +54,11 @@ func TestSettings(t *testing.T) {
 	}
 }
 
-// settings array（隐含 array<string>）: 合法/非法元素校验。
-func TestSettingsArray(t *testing.T) {
+// settings 值透传（piece 哲学）: array/object 不是配置的 kind — 结构配置走
+// 类型系统的节点字段; settings 只收标量编辑形态。
+func TestSettingsScalarOnly(t *testing.T) {
 	s := newFilterSvc(t)
-	if err := s.SetSetting(Setting{Key: "tags", Group: "seo", Kind: "array", Note: "关键词", Value: []any{"a", "b"}}); err != nil {
-		t.Fatal(err)
-	}
-	got, _ := s.GetSetting("tags")
-	if len(got.Value.([]any)) != 2 {
-		t.Fatalf("array: %v", got.Value)
-	}
-	if err := s.SetSetting(Setting{Key: "x", Kind: "array", Value: "not-array"}); err == nil {
-		t.Fatal("non-array must fail")
-	}
-	if err := s.SetSetting(Setting{Key: "x", Kind: "array", Value: []any{"a", 5}}); err == nil {
-		t.Fatal("non-string element must fail")
+	if err := s.SetSetting(Setting{Key: "x", Kind: "array", Value: []any{"a"}}); err == nil {
+		t.Fatal("array is not a settings kind (edit-shape only, scalar values)")
 	}
 }
