@@ -45,7 +45,7 @@ func TestLispFilter(t *testing.T) {
 		t.Fatalf("not: %d", n)
 	}
 	// 3. 引用 + 占位符
-	if n := lq(`(ref categories {:id})`, map[string]any{"id": child}); n != 1 {
+	if n := lq(`(-> categories {:id})`, map[string]any{"id": child}); n != 1 {
 		t.Fatalf("ref: %d", n)
 	}
 	// 4. 集合内嵌 subtree（图原语下沉到表达式）
@@ -99,4 +99,31 @@ func TestLispRegisterFunc(t *testing.T) {
 	if len(list) != 1 || list[0].Fields["title"] != "甲" {
 		t.Fatalf("registered func: %d", len(list))
 	}
+}
+
+// ^ 方向标记: 穿透的入边段（(get categories ^parent $.name "根") —
+// 文章→分类(出边)→父分类(入边: 谁把该分类当 parent)→name）。
+func TestLispThroughDirection(t *testing.T) {
+	s := newFilterSvc(t)
+	root, _ := s.Create(&Node{Type: "category", Slug: "root", Fields: Fields{"name": "根"}})
+	child, _ := s.Create(&Node{Type: "category", Slug: "child", Fields: Fields{"name": "子", "parent": root}})
+	// 文章挂 child（甲）; 另一篇挂 root（乙）
+	art, _ := s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "甲", "categories": []any{child}}})
+	b, _ := s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "乙", "categories": []any{root}}})
+
+	// (get categories ^parent $.name "子"): 文章→分类(出边), ^parent(入边)=
+	// 谁把该分类当父。乙挂 root → root 的 ^parent 入边 = child（child.parent=root）
+	// → child.name="子" ✓ 乙命中; 甲挂 child → child 的 ^parent 入边 = 无 ✗
+	where, args, err := s.CompileLisp(`(get categories ^parent $.name "子")`, "article", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, _, err := s.ListAny(where, args, 1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].ID != b {
+		t.Fatalf("^direction: %d (want 乙 %d)", len(list), b)
+	}
+	_ = art
 }

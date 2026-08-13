@@ -46,19 +46,17 @@ func (s *Service) registerBuiltinLispFuncs() {
 		}
 		return "NOT (" + frag + ")", a, nil
 	}
-	// ── 引用 ──────────────────────────────────
-	s.lispFuncs["ref"] = func(ctx *LispCtx, args []lispExpr) (string, []any, error) {
-		return ctx.refCmp("ref", args, false)
+	// ── 引用（-> 出边 / <- 入边; <- 一元 = 入边存在性）──
+	s.lispFuncs["->"] = func(ctx *LispCtx, args []lispExpr) (string, []any, error) {
+		return ctx.refCmp("->", args, false)
 	}
-	s.lispFuncs["ref-in"] = func(ctx *LispCtx, args []lispExpr) (string, []any, error) {
-		return ctx.refCmp("ref-in", args, true)
-	}
-	s.lispFuncs["has-in"] = func(ctx *LispCtx, args []lispExpr) (string, []any, error) {
-		if len(args) != 1 {
-			return "", nil, fmt.Errorf("filter-lisp: has-in takes 1 arg")
+	s.lispFuncs["<-"] = func(ctx *LispCtx, args []lispExpr) (string, []any, error) {
+		if len(args) == 1 {
+			// 入边存在性
+			field, _ := pathOf(args[0])
+			return "EXISTS(SELECT 1 FROM edges WHERE field = " + ctx.g.bind() + " AND to_node = nodes.id)", []any{field}, nil
 		}
-		field, _ := pathOf(args[0])
-		return "EXISTS(SELECT 1 FROM edges WHERE field = " + ctx.g.bind() + " AND to_node = nodes.id)", []any{field}, nil
+		return ctx.refCmp("<-", args, true)
 	}
 	// ── 穿透（递归 — 函数内部调 lispCall 组合）─────
 	s.lispFuncs["get"] = func(ctx *LispCtx, args []lispExpr) (string, []any, error) {
@@ -184,11 +182,16 @@ func (ctx *LispCtx) through(args []lispExpr) (string, []any, error) {
 }
 
 // throughRec 递归编译穿透: 每段一层 EXISTS, 别名唯一（e{i}/t{i}）。
+// 段方向: "^" 前缀 = 入边（JOIN 按 from_node, link 反向）; 无标记 = 出边。
 func (ctx *LispCtx) throughRec(segs []lispExpr, val any, i int, link string) (string, []any, error) {
+	var err error
 	segName, _ := pathOf(segs[i])
+	in := strings.HasPrefix(segName, "^")
+	segName = strings.TrimPrefix(segName, "^")
 	// 当前层宿主类型: 段0 = ctx.td; 更深层 = 前段的 ref 目标
 	if i > 0 {
 		prev, _ := pathOf(segs[i-1])
+		prev = strings.TrimPrefix(prev, "^")
 		to, err := ctx.refTargetType(prev)
 		if err != nil {
 			return "", nil, err
@@ -199,17 +202,9 @@ func (ctx *LispCtx) throughRec(segs []lispExpr, val any, i int, link string) (st
 		}
 		ctx.td = &htd
 	}
-	to, err := ctx.refTargetType(segName)
-	if err != nil {
+	if _, err := ctx.refTargetType(segName); err != nil {
 		return "", nil, err
 	}
-	// 下一层宿主类型 = 本段目标（递归时用）
-	nextCtx := *ctx
-	if i == 0 {
-		// 保存原始 ctx（递归恢复用 — 简化: 每层重查类型）
-	}
-	_ = to
-	_ = nextCtx
 
 	var inner string
 	var innerArgs []any
@@ -231,7 +226,14 @@ func (ctx *LispCtx) throughRec(segs []lispExpr, val any, i int, link string) (st
 			return "", nil, err
 		}
 	}
-	frag := fmt.Sprintf("EXISTS(SELECT 1 FROM edges e%d JOIN nodes t%d ON t%d.id = e%d.to_node WHERE e%d.field = ", i+1, i+1, i+1, i+1, i+1) +
-		ctx.g.bind() + " AND e" + fmt.Sprintf("%d", i+1) + ".from_node = " + link + " AND " + inner + ")"
+	// 段方向决定 JOIN/link: 出边 to_node 为下一节点; 入边 from_node 为下一节点
+	joinCol := "to_node"
+	linkCol := "from_node"
+	if in {
+		joinCol = "from_node"
+		linkCol = "to_node"
+	}
+	frag := fmt.Sprintf("EXISTS(SELECT 1 FROM edges e%d JOIN nodes t%d ON t%d.id = e%d.%s WHERE e%d.field = ", i+1, i+1, i+1, i+1, joinCol, i+1) +
+		ctx.g.bind() + " AND e" + fmt.Sprintf("%d", i+1) + "." + linkCol + " = " + link + " AND " + inner + ")"
 	return frag, append(innerArgs, segName), nil
 }
