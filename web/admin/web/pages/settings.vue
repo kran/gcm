@@ -46,10 +46,10 @@
         </el-form-item>
 
         <!-- 按类型渲染控件 -->
-        <el-form-item v-if="dialog.kind === 'string'" label="value">
+        <el-form-item v-if="dialog.kind === 'text'" label="value">
           <el-input v-model="dialog.scalar" placeholder="字符串值" />
         </el-form-item>
-        <el-form-item v-else-if="dialog.kind === 'text'" label="value">
+        <el-form-item v-else-if="dialog.kind === 'textarea'" label="value">
           <el-input v-model="dialog.scalar" type="textarea" :rows="4" />
         </el-form-item>
         <el-form-item v-else-if="dialog.kind === 'number'" label="value">
@@ -71,7 +71,7 @@
           </div>
         </el-form-item>
 
-        <el-form-item v-else-if="dialog.kind === 'file'" label="value">
+        <el-form-item v-else-if="dialog.kind === 'upload-file'" label="value">
           <div style="width:100%;">
             <div style="display:flex;gap:8px;">
               <el-input v-model="dialog.scalar" placeholder="/uploads/xxx.pdf" style="flex:1;" />
