@@ -146,6 +146,9 @@ func Mount(s *web.Site, svc *core.Service, ts *types.Types, uploadDir string) {
 			authed.Get("/tree", b.tree)
 			authed.Get("/expand", b.expand)
 			authed.Post("/password", b.changePassword)
+			authed.Get("/settings", b.listSettings)
+			authed.Post("/settings", b.setSetting)
+			authed.Delete("/settings/{key}", b.deleteSetting)
 		})
 	})
 }
@@ -476,6 +479,46 @@ func (b *backend) expand(ctx *web.CmsCtx) {
 		return
 	}
 	_ = ctx.Json(http.StatusOK, map[string]any{"node": root})
+}
+
+// ── 站点配置（settings, cmx piece 语义）──────────
+
+// listSettings 全部配置（可按分组过滤）。
+func (b *backend) listSettings(ctx *web.CmsCtx) {
+	group := ctx.Query("group")
+	list, err := b.core.ListSettings(group)
+	if err != nil {
+		b.internal(ctx, err)
+		return
+	}
+	_ = ctx.Json(http.StatusOK, map[string]any{"items": list})
+}
+
+// setSetting body 为 {"key","group","type"(编辑形态),"value"(自由 JSON)}。
+func (b *backend) setSetting(ctx *web.CmsCtx) {
+	var in struct {
+		Key   string `json:"key"`
+		Group string `json:"group"`
+		Type  string `json:"type"`
+		Value any    `json:"value"`
+	}
+	if err := ctx.BindJson(&in); err != nil {
+		b.bad(ctx, err)
+		return
+	}
+	if err := b.core.SetSetting(in.Key, in.Group, in.Type, in.Value); err != nil {
+		b.bad(ctx, err)
+		return
+	}
+	_ = ctx.Json(http.StatusOK, map[string]any{"ok": true})
+}
+
+func (b *backend) deleteSetting(ctx *web.CmsCtx) {
+	if err := b.core.DeleteSetting(ctx.PathValue("key")); err != nil {
+		ctx.Error(http.StatusNotFound, err.Error())
+		return
+	}
+	_ = ctx.Json(http.StatusOK, map[string]any{"ok": true})
 }
 
 // ── 实体搜索（引用编辑器用）──────────────────────

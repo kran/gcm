@@ -109,6 +109,16 @@ func (e *Engine) queryFuncs() template.FuncMap {
 			fail(err)
 			return list
 		},
+		// setting: 站点配置值（按 key 取; 缺失 → nil; 值按 JSON 形态,
+		// richtext 模板自行 safeHTML）
+		"setting": func(key string) any {
+			st, err := svc.GetSetting(key)
+			fail(err)
+			if st == nil {
+				return nil
+			}
+			return st.Value
+		},
 		// search: 全文检索（FTS5+bigram; 只索引 search:true 类型的已发布节点）
 		"search": func(q, typ string, page, size int) []core.Node {
 			list, _, err := svc.Search(q, typ, page, size)

@@ -80,6 +80,13 @@ func setup(site *web.Site, svc *core.Service) error {
 	if err := seed(svc); err != nil {
 		return err
 	}
+	// 站点配置（cmx piece 语义: 编辑形态 + 自由 JSON）
+	if err := svc.SetSetting("footer", "site", "richtext", "gcm 示例站点 — 实体-关系 CMS"); err != nil {
+		return err
+	}
+	if err := svc.SetSetting("nav_links", "site", "array", []any{"首页", "关于"}); err != nil {
+		return err
+	}
 	// 站点扩展: 挂载控件组件路由（/admin/ui-extras/*.vue — color kind 的
 	// 编辑原语; kind 注册在 SiteSpec.Kinds, Load 前生效）
 	site.Get("/admin/ui-extras/*", func(ctx *web.CmsCtx) {
