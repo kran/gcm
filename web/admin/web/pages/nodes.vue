@@ -22,16 +22,19 @@
         <span style="font-weight:600;font-size:14px;">按{{ filterTree.label }}过滤</span>
         <el-button v-if="filterTree.active" link type="primary" size="small" @click="clearTreeFilter">清除</el-button>
       </div>
-      <div class="type-list">
+      <div class="type-list" style="padding:0;">
         <div class="type-item" :class="{ active: filterTree.active === 0 }" @click="clearTreeFilter">
           <span>全部</span>
         </div>
-        <div v-for="n in filterTree.nodes" :key="n.id" class="type-item tree-node"
-             :class="{ active: filterTree.active === n.id }"
-             :style="{ 'padding-left': (treeDepth(n) * 12 + 8) + 'px' }"
-             @click="onTreeClick(n)">
-          <span>{{ titleOf(n) }}</span>
-        </div>
+        <el-tree :data="filterTree.nodes" node-key="id" default-expand-all
+                 :expand-on-click-node="false" highlight-current
+                 :current-node-key="filterTree.active" @node-click="onTreeClick">
+          <template #default="{ data }">
+            <span class="tree-node-label" :style="{ fontWeight: filterTree.active === data.id ? 700 : 400 }">
+              {{ titleOf(data) }}
+            </span>
+          </template>
+        </el-tree>
       </div>
     </div>
 
@@ -180,7 +183,7 @@ export default {
             treeMode: false,
             treeNodes: [],
             parentField: 'parent',
-            filterTree: { def: null, field: '', label: '', nodes: [], active: 0, depthMap: {} },
+            filterTree: { def: null, field: '', label: '', nodes: [], active: 0 },
             query: { type: '', status: null, q: '', page: 1, size: 20 },
             dialog: { visible: false, isEdit: false, id: 0, def: null, saving: false, form: emptyForm() },
             expandDialog: { visible: false, loading: false, node: null, fields: [] },
@@ -227,14 +230,15 @@ export default {
         // 树过滤: 当前类型的 ref 字段指向"有树结构"类型时, 提供按树过滤。
         // 点击树节点 → DFS 子树 id 集合 → filter "{field} ~ [ids]" → 刷新列表。
         async setupFilterTree(def) {
-            this.filterTree = { def: null, field: '', label: '', nodes: [], active: 0, depthMap: {} }
+            this.filterTree = { def: null, field: '', label: '', nodes: [], active: 0 }
             if (!def) return
             const name = def.name
             for (const f of def.fields || []) {
                 if (!(f.kind === 'ref' || f.kind === 'ref[]')) continue
+                if (f.to === name) continue // 自身自引用: 列表即树（treeMode）, 过滤栏多余
                 const tdef = this.typeDefs[f.to]
                 if (tdef && this.selfRefField(tdef)) {
-                    this.filterTree = { def: tdef, field: f.name, label: f.label || f.name, nodes: [], active: 0, depthMap: {} }
+                    this.filterTree = { def: tdef, field: f.name, label: f.label || f.name, nodes: [], active: 0 }
                     this.loadFilterTree(f.to)
                     return // 第一个树引用字段
                 }
@@ -244,14 +248,7 @@ export default {
             try {
                 const res = await window.$api.get('/admin/tree', { type: typeName })
                 const pf = this.selfRefField(this.filterTree.def) || 'parent'
-                const roots = this.buildTree(res.items || [], pf)
-                const depthMap = {}
-                const walk = (nodes, depth) => {
-                    nodes.forEach(n => { depthMap[n.id] = depth; walk(n.children || [], depth + 1) })
-                }
-                walk(roots, 0)
-                this.filterTree.nodes = roots
-                this.filterTree.depthMap = depthMap
+                this.filterTree.nodes = this.buildTree(res.items || [], pf)
             } catch (_) {}
         },
         // 点击树节点: 子树集合 → filter 刷新列表
@@ -278,8 +275,6 @@ export default {
             walk(n)
             return ids
         },
-        treeDepth(n) { return this.filterTree.depthMap[n.id] || 0 },
-
         // 平铺节点列表 → 树（无 parent / parent 缺失 = 根）
         buildTree(items, parentField) {
             const map = {}
