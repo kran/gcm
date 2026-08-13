@@ -48,6 +48,11 @@ func setup(site *web.Site, svc *core.Service) error {
 	if err := seed(svc); err != nil {
 		return err
 	}
+	// 站点配置（运营后台可改页脚/版权）
+	if err := svc.SetSetting(core.Setting{Key: "footer", Group: "site", Kind: "richtext",
+		Note: "页脚内容", Value: "gcm 示例站点 — 实体-关系 CMS"}); err != nil {
+		return err
+	}
 
 	// 导航高亮: 当前节点的高亮分类集合（所属分类 + 全部祖先）。
 	// 引擎原语组装（outRefs 找分类 / traverse 祖先链）, 模板只做 in 判断。

@@ -146,6 +146,8 @@ func Mount(s *web.Site, svc *core.Service, ts *types.Types, uploadDir string) {
 			authed.Get("/tree", b.tree)
 			authed.Get("/expand", b.expand)
 			authed.Post("/password", b.changePassword)
+			authed.Get("/settings", b.listSettings)
+			authed.Post("/settings", b.setSetting)
 		})
 	})
 }
@@ -466,6 +468,43 @@ func (b *backend) expand(ctx *web.CmsCtx) {
 		return
 	}
 	_ = ctx.Json(http.StatusOK, map[string]any{"node": root})
+}
+
+// ── 站点配置（settings）─────────────────────────
+
+// listSettings 全部设置（可按 group 过滤）。
+func (b *backend) listSettings(ctx *web.CmsCtx) {
+	group := ctx.Query("group")
+	list, err := b.core.ListSettings(group)
+	if err != nil {
+		b.internal(ctx, err)
+		return
+	}
+	_ = ctx.Json(http.StatusOK, map[string]any{"items": list})
+}
+
+// setSetting upsert 配置（kind + 值校验在 core, fail-loud）。
+func (b *backend) setSetting(ctx *web.CmsCtx) {
+	var in struct {
+		Key   string `json:"key"`
+		Group string `json:"group"`
+		Kind  string `json:"kind"`
+		Note  string `json:"note"`
+		Value any    `json:"value"`
+	}
+	if err := ctx.BindJson(&in); err != nil {
+		b.bad(ctx, err)
+		return
+	}
+	if in.Key == "" {
+		ctx.Error(http.StatusBadRequest, "key required")
+		return
+	}
+	if err := b.core.SetSetting(core.Setting{Key: in.Key, Group: in.Group, Kind: in.Kind, Note: in.Note, Value: in.Value}); err != nil {
+		b.bad(ctx, err)
+		return
+	}
+	_ = ctx.Json(http.StatusOK, map[string]any{"ok": true})
 }
 
 // ── 实体搜索（引用编辑器用）──────────────────────
