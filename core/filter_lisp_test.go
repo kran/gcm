@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -15,13 +16,7 @@ func TestLispFilter(t *testing.T) {
 
 	lq := func(lisp string, params map[string]any) int {
 		t.Helper()
-		e, err := parseLisp(lisp)
-		if err != nil {
-			t.Fatalf("parse %q: %v", lisp, err)
-		}
-		td, _ := s.types.Type("article")
-		idx := 1
-		where, args, err := s.compileLisp(e, &td, params, phGen{&idx})
+		where, args, err := s.CompileLisp(lisp, "article", params)
 		if err != nil {
 			t.Fatalf("compile %q: %v", lisp, err)
 		}
@@ -62,5 +57,46 @@ func TestLispFilter(t *testing.T) {
 	//    (get categories parent $.name "根") — 3 段路径
 	if n := lq(`(get categories parent $.name "根")`, nil); n != 1 {
 		t.Fatalf("get 3-level: %d", n)
+	}
+}
+
+// 注册驱动: 站点自定义函数（Lisp 精髓 — 函数进表达式）。
+func TestLispRegisterFunc(t *testing.T) {
+	s := newFilterSvc(t)
+	root, _ := s.Create(&Node{Type: "category", Slug: "root", Fields: Fields{"name": "根"}})
+	child, _ := s.Create(&Node{Type: "category", Slug: "child", Fields: Fields{"name": "子", "parent": root}})
+	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "甲", "categories": []any{child}}})
+	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "乙"}})
+
+	// 站点注册: (children-of "root") — 返回根分类的子树 id（集合函数）
+	s.RegisterLispFunc("children-of", func(ctx *LispCtx, args []lispExpr) (string, []any, error) {
+		if len(args) != 1 {
+			return "", nil, fmt.Errorf("children-of takes 1 arg")
+		}
+		slug, _ := pathOf(args[0])
+		cat, _ := ctx.svc.GetBySlug(slug)
+		if cat == nil {
+			return "", nil, fmt.Errorf("children-of: %q not found", slug)
+		}
+		ids, _ := ctx.svc.Subtree(cat.ID, "parent", 20)
+		ids = append([]int64{cat.ID}, ids...)
+		anyIDs := make([]any, len(ids))
+		for i, id := range ids {
+			anyIDs[i] = id
+		}
+		return "", []any{anyIDs}, nil
+	})
+
+	// 表达式组合: (in categories (children-of "root"))
+	where, args, err := s.CompileLisp(`(in categories (children-of "root"))`, "article", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, _, err := s.ListAny(where, args, 1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].Fields["title"] != "甲" {
+		t.Fatalf("registered func: %d", len(list))
 	}
 }
