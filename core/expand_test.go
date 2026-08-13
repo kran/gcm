@@ -261,13 +261,14 @@ func TestExpandMultiLevel(t *testing.T) {
 	if len(l1) != 1 || l1[0].ID != grand {
 		t.Fatalf("level1: %v", l1)
 	}
-	l2 := l1[0].Expand["parent"].([]*Node)
-	if len(l2) != 1 || l2[0].ID != child {
-		t.Fatalf("level2: %v", l2)
+	// parent 是 ref 单值（非 ref[]）→ 形态 *Node
+	l2 := l1[0].Expand["parent"].(*Node)
+	if l2.ID != child {
+		t.Fatalf("level2: %d", l2.ID)
 	}
-	l3 := l2[0].Expand["parent"].([]*Node)
-	if len(l3) != 1 || l3[0].ID != root {
-		t.Fatalf("level3: %v", l3)
+	l3 := l2.Expand["parent"].(*Node)
+	if l3.ID != root {
+		t.Fatalf("level3: %d", l3.ID)
 	}
 
 	// 多层入边: child 的 <-parent = [grand]; grand 的 <-parent = [great]
