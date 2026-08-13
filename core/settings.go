@@ -2,8 +2,10 @@ package core
 
 // settings 站点配置（键值 + 运营元数据）。
 //
-// 值按 kind 的形态存 JSON（kind = 类型系统的 kind 名, 校验/编辑形态复用）;
-// group_name 分组（运营分类, 未来权限挂载点）; note 描述（key 语义说明）。
+// 配置类型注册表: 每项配置的类型 = 完整 FieldDef（kind + item/fields）,
+// 站点 Go 代码声明（SettingTypes 注册）— settings 是类型系统的"应用",
+// 校验直接复用 types.ValidateValue（复合递归 + 叶子 kind.Validate）。
+// 表只存值 + 元数据; 定义在注册表（代码即配置, 重启不丢）。
 
 import (
 	"encoding/json"
@@ -13,16 +15,43 @@ import (
 	"github.com/kran/gcm/types"
 )
 
-// Setting 一条站点配置。
+// SettingType 一项配置的类型定义（注册表条目）。
+type SettingType struct {
+	Key   string         // 配置 key
+	Field types.FieldDef // 完整字段定义（kind + item/fields）— 校验与编辑的依据
+	Note  string         // 描述（key 语义说明）
+}
+
+// Setting 一条站点配置（值 + 元数据; 类型在注册表）。
 type Setting struct {
 	Key       string    `db:"key" json:"key"`
+	Kind      string    `db:"kind" json:"kind"` // 冗余副本（注册表权威; 表列保留便于追溯）
 	Group     string    `db:"group_name" json:"group"`
-	Kind      string    `db:"kind" json:"kind"`
 	Note      string    `db:"note" json:"note"`
 	RawValue  string    `db:"value" json:"-"`
-	Value     any       `db:"-" json:"value"` // JSON 解码（按 kind 的形态）
+	Value     any       `db:"-" json:"value"` // JSON 解码（按类型的形态）
 	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
 }
+
+// SettingTypes 注册配置类型（站点 Setup 调用; 重复 key panic）。
+// 注册表是 settings 的类型来源 — admin 按注册的 FieldDef 渲染编辑表单。
+func (s *Service) SettingTypes(types ...SettingType) {
+	for _, st := range types {
+		if st.Key == "" || st.Field.Kind == "" {
+			panic(fmt.Sprintf("core: setting type %q: key and kind required", st.Key))
+		}
+		if st.Field.Kind == "array" && st.Field.Item == nil {
+			panic(fmt.Sprintf("core: setting type %q: array requires item", st.Key))
+		}
+		if _, dup := s.settingTypes[st.Key]; dup {
+			panic(fmt.Sprintf("core: setting type %q already registered", st.Key))
+		}
+		s.settingTypes[st.Key] = st
+	}
+}
+
+// SettingTypesView 注册表只读视图（admin 下发）。
+func (s *Service) SettingTypesView() map[string]SettingType { return s.settingTypes }
 
 // GetSetting 取一条; 缺失返回 (nil, nil)。
 func (s *Service) GetSetting(key string) (*Setting, error) {
@@ -78,37 +107,27 @@ func (s *Service) ListSettings(group string) ([]Setting, error) {
 	return rows, nil
 }
 
-// SetSetting upsert 一条配置: kind 必须已注册（复用类型系统校验）+ 值经
-// kind.Validate（fail-loud）。group/note 是元数据透传。
-func (s *Service) SetSetting(st Setting) error {
-	// kind 配置实例语义: settings 每一项 = 一个 kind 被应用（携带完整语义
-	// 校验 + 编辑形态）。复合 kind 用默认配置 — array = array<string>
-	// （标签/列表）; object = 自由 map（形状检查, 子定义等 schema 注册机制）。
-	// 值经 ValidateValue 校验（叶子走 kind.Validate, 复合递归）。
-	fd := types.FieldDef{Kind: st.Kind}
-	switch st.Kind {
-	case "array":
-		fd.Item = &types.FieldDef{Kind: "string"}
-	case "object":
-		// 自由 map: 仅形状检查（无子定义）
-		if _, ok := st.Value.(map[string]any); !ok {
-			return fmt.Errorf("core: settings %q: object expects map[string]any, got %T", st.Key, st.Value)
-		}
-		return nil
+// SetSetting upsert 一条配置的值: 类型取自注册表（SettingTypes 声明）,
+// 值经 types.ValidateValue 校验（与节点字段同一套语义, 复合递归）。
+// group/note 随注册表; 调用方无需传类型（类型是配置项的固有属性）。
+func (s *Service) SetSetting(key string, value any) error {
+	st, ok := s.settingTypes[key]
+	if !ok {
+		return fmt.Errorf("core: settings %q: not registered (SettingTypes first)", key)
 	}
-	if err := s.types.ValidateValue("settings", fd, st.Value); err != nil {
-		return fmt.Errorf("core: settings %q: %w", st.Key, err)
+	if err := s.types.ValidateValue("settings."+key, st.Field, value); err != nil {
+		return fmt.Errorf("core: settings %q: %w", key, err)
 	}
-	raw, err := json.Marshal(st.Value)
+	raw, err := json.Marshal(value)
 	if err != nil {
-		return fmt.Errorf("core: settings %q: marshal: %w", st.Key, err)
+		return fmt.Errorf("core: settings %q: marshal: %w", key, err)
 	}
 	if _, err := s.db.Add(
-		`INSERT INTO settings (key, group_name, kind, note, value, updated_at)
-		 VALUES (#{1}, #{2}, #{3}, #{4}, #{5}, datetime('now'))
-		 ON CONFLICT(key) DO UPDATE SET group_name = #{2}, kind = #{3}, note = #{4}, value = #{5}, updated_at = datetime('now')`,
-		st.Key, st.Group, st.Kind, st.Note, string(raw)).Exec(); err != nil {
-		return fmt.Errorf("core: settings %q: %w", st.Key, err)
+		`INSERT INTO settings (key, group_name, note, value, updated_at)
+		 VALUES (#{1}, #{2}, #{3}, #{4}, datetime('now'))
+		 ON CONFLICT(key) DO UPDATE SET group_name = #{2}, note = #{3}, value = #{4}, updated_at = datetime('now')`,
+		key, st.Field.Kind, st.Note, string(raw)).Exec(); err != nil {
+		return fmt.Errorf("core: settings %q: %w", key, err)
 	}
 	return nil
 }

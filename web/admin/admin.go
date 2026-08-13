@@ -482,7 +482,7 @@ func (b *backend) expand(ctx *web.CmsCtx) {
 
 // ── 站点配置（settings）─────────────────────────
 
-// listSettings 全部设置（可按 group 过滤）。
+// listSettings 已设置值 + 配置类型注册表（前端按注册表的 FieldDef 渲染表单）。
 func (b *backend) listSettings(ctx *web.CmsCtx) {
 	group := ctx.Query("group")
 	list, err := b.core.ListSettings(group)
@@ -490,27 +490,28 @@ func (b *backend) listSettings(ctx *web.CmsCtx) {
 		b.internal(ctx, err)
 		return
 	}
-	_ = ctx.Json(http.StatusOK, map[string]any{"items": list})
+	// 注册表 → 前端形态: {key: {kind, note, editor, item, fields}}（FieldDef 平铺）
+	types := map[string]any{}
+	for key, st := range b.core.SettingTypesView() {
+		f := st.Field
+		f.Editor, _ = b.ts.KindWidget(f.Kind)
+		types[key] = map[string]any{"kind": f.Kind, "note": st.Note,
+			"editor": f.Editor, "item": f.Item, "fields": f.Fields, "label": f.Label}
+	}
+	_ = ctx.Json(http.StatusOK, map[string]any{"items": list, "types": types})
 }
 
-// setSetting upsert 配置（kind + 值校验在 core, fail-loud）。
+// setSetting 按 key 存值（类型/note 从注册表; 校验复用 types.ValidateValue）。
 func (b *backend) setSetting(ctx *web.CmsCtx) {
 	var in struct {
 		Key   string `json:"key"`
-		Group string `json:"group"`
-		Kind  string `json:"kind"`
-		Note  string `json:"note"`
 		Value any    `json:"value"`
 	}
 	if err := ctx.BindJson(&in); err != nil {
 		b.bad(ctx, err)
 		return
 	}
-	if in.Key == "" {
-		ctx.Error(http.StatusBadRequest, "key required")
-		return
-	}
-	if err := b.core.SetSetting(core.Setting{Key: in.Key, Group: in.Group, Kind: in.Kind, Note: in.Note, Value: in.Value}); err != nil {
+	if err := b.core.SetSetting(in.Key, in.Value); err != nil {
 		b.bad(ctx, err)
 		return
 	}

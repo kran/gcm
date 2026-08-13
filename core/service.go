@@ -36,12 +36,13 @@ const (
 )
 
 type Service struct {
-	db          *dba.SQL
-	dao         *dba.Dao[Node]
-	types       *types.Types
-	search      SearchIndex // 全文检索引擎（默认 FTS5+bigram; SetSearchIndex 可换）
-	hooks       *hook.Bus
-	filterCache sync.Map // filter 表达式 → *CompiledFilter（编译缓存, 消费方共享）
+	db           *dba.SQL
+	dao          *dba.Dao[Node]
+	types        *types.Types
+	search       SearchIndex // 全文检索引擎（默认 FTS5+bigram; SetSearchIndex 可换）
+	hooks        *hook.Bus
+	filterCache  sync.Map               // filter 表达式 → *CompiledFilter（编译缓存, 消费方共享）
+	settingTypes map[string]SettingType // 配置类型注册表（SettingTypes 声明）
 }
 
 // Hooks 站点级 hook 总线（注册扩展; 执行顺序 = priority 升序 + 注册序稳定）。
@@ -52,7 +53,7 @@ func (s *Service) Types() *types.Types { return s.types }
 
 // New 建引擎。
 func New(db *dba.SQL, ts *types.Types) *Service {
-	svc := &Service{db: db, dao: dba.NewDao[Node](db, "nodes"), types: ts}
+	svc := &Service{db: db, dao: dba.NewDao[Node](db, "nodes"), types: ts, settingTypes: map[string]SettingType{}}
 	svc.search = NewFTSIndex(svc)
 	// 标准事件声明（注册即校验签名）
 	svc.hooks = hook.New()
