@@ -184,8 +184,8 @@ func (ctx *LispCtx) through(args []lispExpr) (string, []any, error) {
 	segs := args
 	last := args[len(args)-1]
 	if last.head == "" {
-		// 原子兼容: (get 段... 字段 值) → 默认 = 比较
-		if len(args) < 4 {
+		// 原子兼容: (get 段... 字段 值) → 默认 = 比较（至少 1 段 + 字段 + 值）
+		if len(args) < 3 {
 			return "", nil, fmt.Errorf("filter-lisp: get needs target comparison")
 		}
 		val, err := ctx.valueOf(args[len(args)-1])
