@@ -539,11 +539,21 @@ func (s *Service) ListQWithParams(q ListQuery, params map[string]any) ([]Node, i
 	if q.Size < 1 {
 		q.Size = 20
 	}
+	// type 条件合成进 filter（列比较, 参数化）: (and (= type "xxx") <user filter>)
+	// — ListQ.Type 的语义 = 类型过滤（不只编译宿主）
+	whereExpr := q.Filter
+	if q.Type != "" {
+		if whereExpr != "" {
+			whereExpr = `(and (= type "` + q.Type + `") ` + whereExpr + `)`
+		} else {
+			whereExpr = `(= type "` + q.Type + `")`
+		}
+	}
 	db := s.db.Add(`SELECT * FROM nodes WHERE ${where} ${order:ORDER BY sort, id DESC} LIMIT #{1} OFFSET #{2}`,
 		q.Size, (q.Page-1)*q.Size)
-	if q.Filter != "" {
+	if whereExpr != "" {
 		var err error
-		db, err = s.CompileLispInto(db, q.Filter, q.Type, params)
+		db, err = s.CompileLispInto(db, whereExpr, q.Type, params)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -558,9 +568,9 @@ func (s *Service) ListQWithParams(q ListQuery, params map[string]any) ([]Node, i
 		return nil, 0, err
 	}
 	cdb := s.db.Add(`SELECT COUNT(1) FROM nodes WHERE ${where}`)
-	if q.Filter != "" {
+	if whereExpr != "" {
 		var err error
-		cdb, err = s.CompileLispInto(cdb, q.Filter, q.Type, params)
+		cdb, err = s.CompileLispInto(cdb, whereExpr, q.Type, params)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -570,6 +580,20 @@ func (s *Service) ListQWithParams(q ListQuery, params map[string]any) ([]Node, i
 	var total int64
 	if _, err := cdb.Get(&total); err != nil {
 		return nil, 0, err
+	}
+	// Expand 接线: 批量路径展开（查询次数 = 路径长度, 与列表大小无关）
+	if q.Expand != "" {
+		ids := make([]int64, len(rows))
+		for i := range rows {
+			ids[i] = rows[i].ID
+		}
+		expanded, err := s.ExpandPathMany(ids, q.Expand)
+		if err != nil {
+			return nil, 0, err
+		}
+		for i := range rows {
+			rows[i].Expand = expanded[i].Expand
+		}
 	}
 	return rows, total, nil
 }

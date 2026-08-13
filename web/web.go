@@ -141,6 +141,8 @@ func (s *Site) mount() {
 	if s.static != "" {
 		s.Get("/static/*", s.staticHandler())
 	}
+	// 记录 API（公开只读; Lisp filter + ListQ 直通）
+	s.Get("/api/nodes/{type}", s.apiNodes)
 	s.Get("/node/{id}", s.nodeHandler())
 	// 路由未匹配 → 同一 404 出口
 	s.SetNotFound(func(ctx *CmsCtx) { s.render404(ctx) })
