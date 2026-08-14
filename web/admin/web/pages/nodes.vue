@@ -251,12 +251,12 @@ export default {
                 this.filterTree.nodes = this.buildTree(res.items || [], pf)
             } catch (_) {}
         },
-        // 点击树节点: 子树集合 → filter 刷新列表
+        // 点击树节点: 子树集合 → filter 刷新列表（Lisp: 引用集合 in + 数组字面量）
         onTreeClick(n) {
             if (this.filterTree.active === n.id) return
             this.filterTree.active = n.id
             const ids = this.collectSubtree(n)
-            this.query.filter = this.filterTree.field + ' ~ [' + ids.join(',') + ']'
+            this.query.filter = '(in ->' + this.filterTree.field + ' [' + ids.join(' ') + '])'
             this.query.page = 1
             this.refresh()
         },
