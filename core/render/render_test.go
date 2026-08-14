@@ -201,7 +201,7 @@ func TestFilterListFailLoud(t *testing.T) {
 	if err == nil {
 		t.Fatal("bad filter must fail render (fail-loud)")
 	}
-	if !strings.Contains(err.Error(), "filter:") {
+	if !strings.Contains(err.Error(), "filter-lisp:") {
 		t.Fatalf("error must surface filter cause: %v", err)
 	}
 }

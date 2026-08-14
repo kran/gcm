@@ -161,7 +161,7 @@ func (e *Engine) queryFuncs() template.FuncMap {
 			if typ != "" {
 				f = `(and (= type "` + typ + `") ` + expr + `)`
 			}
-			list, _, err := e.core.ListQ(core.ListQuery{Filter: f, Page: page, Size: size})
+			list, _, err := e.core.ListQ(core.ListQuery{Filter: f, Page: page, Size: size}, params)
 			fail(err)
 			return list
 		},
