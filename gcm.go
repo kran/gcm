@@ -20,10 +20,6 @@ package gcm
 
 import (
 	"fmt"
-	"log"
-	"log/slog"
-	"time"
-
 	"github.com/kran/dba"
 	"github.com/kran/gcm/core"
 	"github.com/kran/gcm/core/render"
@@ -31,6 +27,7 @@ import (
 	"github.com/kran/gcm/types"
 	"github.com/kran/gcm/web"
 	"github.com/kran/gcm/web/admin"
+	"log"
 )
 
 // SiteSpec 站点装配规格: 骨架配置 + 业务钩子（全部站点级 — 无应用级 Options）。
@@ -118,10 +115,7 @@ func (a *builder[T]) build(spec SiteSpec[T]) (*web.Site, error) {
 	if err := web.DefineRenderHooks(svc); err != nil {
 		return nil, fmt.Errorf("define render hooks: %w", err)
 	}
-	web.MountStatic(site, spec.Static)
-	web.MountUploads(site, spec.Uploads)
-	web.MountAPI(site)
-	web.MountContent(site)
+	web.Mount(site, spec.Static, spec.Uploads)
 	admin.Mount(site, spec.Uploads)
 	if spec.Setup != nil {
 		if err := spec.Setup(site, svc); err != nil {
@@ -140,12 +134,12 @@ func (a *builder[T]) openDB(spec SiteSpec[T]) (*dba.SQL, error) {
 	// SQL 日志: 站点自定义优先, 否则默认（慢查询 1s 阈值, slog.Default）
 	if spec.SQLLogger != nil {
 		db = db.SetLogger(spec.SQLLogger)
-	} else {
-		db = db.SetLogger(dba.NewLogger(slog.Default(), time.Second, false))
 	}
+
 	if err := migrations.Up(db); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
+
 	// 管理账号引导（固定密码优先, 否则随机打印一次）
 	if dc, err := admin.EnsureDefaults(db); err != nil {
 		return nil, fmt.Errorf("admin bootstrap: %w", err)

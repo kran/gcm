@@ -12,7 +12,6 @@ import (
 // /api/nodes: Lisp filter + sort + 分页 + expand + 错误路径。
 func TestAPINodes(t *testing.T) {
 	s, svc := newSite(t)
-	MountAPI(s)
 	zhang, _ := svc.CreateNode(&core.Node{Type: "person", Slug: "zhang", Fields: core.Fields{"name": "张三"}})
 	wang, _ := svc.CreateNode(&core.Node{Type: "person", Slug: "wang", Fields: core.Fields{"name": "王五"}})
 	for i := 0; i < 5; i++ {

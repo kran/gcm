@@ -64,8 +64,7 @@ func newSite(t *testing.T) (*Site, *core.Service) {
 		t.Fatal(err)
 	}
 	s := New(svc, eng)
-	MountStatic(s, filepath.Join(dir, "static"))
-	MountContent(s)
+	Mount(s, filepath.Join(dir, "static"), "")
 	return s, svc
 }
 
