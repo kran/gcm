@@ -20,6 +20,6 @@ func Mount(s *Site, static, uploads string) {
 	// 记录 API（公开只读; Lisp filter + Q 直通）
 	s.Get("/api/nodes/{type}", s.apiNodes)
 	// 内容路由 + 404 统一出口
-	s.Get("/node/{id}", s.nodeHandler())
+	s.Get("/node/{id}", s.nodeHandler)
 	s.SetNotFound(func(ctx *CmsCtx) { s.render404(ctx) })
 }

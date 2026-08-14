@@ -20,10 +20,6 @@ type Site struct {
 	// Debug 开发模式: 渲染失败显示错误页（模板名/行号/原因/候选/数据 keys）;
 	// 生产: HTML 注释（不泄漏细节, 仅日志）。
 	Debug bool
-
-	// PageDataMaker 页面上下文构造（站点自定义形态; nil = 无 Page 数据）—
-	// 站点装配时提供（New 参数）; 返回类型任意（模板 .Page.X 访问）。
-	PageDataMaker PageDataMaker
 }
 
 // Service 核心服务（站点代码查询入口: Q/图原语/Search; Setup 之外也可取）。

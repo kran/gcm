@@ -26,7 +26,7 @@ func TestMultiSite(t *testing.T) {
 		return td
 	}
 
-	appA, err := NewSite(SiteSpec[any]{
+	appA, err := NewSite(SiteSpec{
 		Hosts:     []string{"site-a.com"},
 		DBPath:    filepath.Join(dir, "a.db"),
 		Types:     typesA,
@@ -39,7 +39,7 @@ func TestMultiSite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	appB, err := NewSite(SiteSpec[any]{
+	appB, err := NewSite(SiteSpec{
 		Hosts:     []string{"site-b.com"},
 		DBPath:    filepath.Join(dir, "b.db"),
 		Types:     typesB,

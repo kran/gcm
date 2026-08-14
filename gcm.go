@@ -30,9 +30,10 @@ import (
 	"log"
 )
 
-// SiteSpec 站点装配规格: 骨架配置 + 业务钩子（全部站点级 — 无应用级 Options）。
-// T 是站点 PageData 泛型（cho 的 CtxMaker[T] 模式 — 站点定形状, gcm 不预设字段名）。
-type SiteSpec[T any] struct {
+// SiteSpec 站点装配规格: 骨架配置 + 业务钩子（全部站点级）。
+// 页面上下文由站点 Setup 里 AddHook(web.HookRender, ...) 注入（泛型消失 —
+// hook 的 data["Page"] 是 any, 站点定形状）。
+type SiteSpec struct {
 	Hosts  []string // 域名列表（Host 头分发键; 多站时必须非空, 单站可空）
 	DBPath string   // SQLite 库文件路径
 	Types  []byte   // types.yaml 内容（类型定义, 站点差异所在）
@@ -51,11 +52,8 @@ type SiteSpec[T any] struct {
 	Templates string // 模板目录（node--{type}.html 级联根）
 	Static    string // 静态资源目录（可空 = 不挂 /static）
 	Uploads   string // 上传目录（可空 = 不上传; 装配层挂 /uploads 服务 + admin 写入）
-	// PageDataMaker 页面上下文构造（站点自定义形态; nil = 无 Page 数据）—
-	// 模板 .Page.X 访问站点自己定义的字段/方法。
-	PageDataMaker func(svc *core.Service, ctx *web.CmsCtx, node *core.Node) T
-	// Setup 站点业务装配: 自定义路由 / 模板函数 / seed。装配后调用;
-	// 返回 error = 装配失败（fail-loud）。
+	// Setup 站点业务装配: 自定义路由 / 模板函数 / HookRender 注入 Page / seed。
+	// 装配后调用; 返回 error = 装配失败（fail-loud）。
 	Setup func(s *web.Site, svc *core.Service) error
 }
 
@@ -67,13 +65,12 @@ type HostMux = web.HostMux
 func NewHostMux() *HostMux { return web.NewHostMux() }
 
 // builder 装配器（内部 — NewSite 的工作单元）。
-type builder[T any] struct{}
+type builder struct{}
 
-// NewSite 装配**一个**站点, 返回 *web.Site（泛型 T 只在装配期 —
-// PageDataMaker 类型; 运行时是 *web.Site, Listen/Handler 直接可用）。
+// NewSite 装配**一个**站点, 返回 *web.Site（Listen/Handler 直接可用）。
 // 多站: 各自 NewSite, 再 gcm.NewHostMux() + mux.Add(hosts, site) 组合。
-func NewSite[T any](spec SiteSpec[T]) (*web.Site, error) {
-	b := &builder[T]{}
+func NewSite(spec SiteSpec) (*web.Site, error) {
+	b := &builder{}
 	site, err := b.build(spec)
 	if err != nil {
 		return nil, fmt.Errorf("gcm: %w", err)
@@ -89,7 +86,7 @@ func NewSite[T any](spec SiteSpec[T]) (*web.Site, error) {
 //	④ Web     web.New（站点形态选项）
 //	⑤ 组件    uploads 服务 + admin 挂载（参数从 site 上下文取）
 //	⑥ 业务    Setup 钩子（站点路由/模板函数/seed）
-func (a *builder[T]) build(spec SiteSpec[T]) (*web.Site, error) {
+func (a *builder) build(spec SiteSpec) (*web.Site, error) {
 	db, err := a.openDB(spec)
 	if err != nil {
 		return nil, err
@@ -101,14 +98,8 @@ func (a *builder[T]) build(spec SiteSpec[T]) (*web.Site, error) {
 	svc := core.New(db, ts)
 	eng := render.New(spec.Templates, svc)
 
-	// PageDataMaker 泛型 T → any 包装（web 用 any, 类型在 App 层）
-	var maker web.PageDataMaker
-	if spec.PageDataMaker != nil {
-		maker = func(ctx *web.CmsCtx, n *core.Node) any { return spec.PageDataMaker(svc, ctx, n) }
-	}
 	site := web.New(svc, eng)
 	site.Debug = spec.Debug
-	site.PageDataMaker = maker
 
 	// 装配序列（每项一个绑定原语, 顺序即职责）:
 	//   hook 注册 → 静态/上传 → API → 内容路由 → admin → 业务 Setup
@@ -126,7 +117,7 @@ func (a *builder[T]) build(spec SiteSpec[T]) (*web.Site, error) {
 }
 
 // openDB ① 存储: 打开 + SQL 日志 + 迁移 + admin 账号引导。
-func (a *builder[T]) openDB(spec SiteSpec[T]) (*dba.SQL, error) {
+func (a *builder) openDB(spec SiteSpec) (*dba.SQL, error) {
 	db, err := dba.Open("sqlite", spec.DBPath)
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
@@ -156,7 +147,7 @@ func (a *builder[T]) openDB(spec SiteSpec[T]) (*dba.SQL, error) {
 }
 
 // loadTypes ② 类型: 站点自定义 kind 注册（types.Load 前）+ types.yaml。
-func (a *builder[T]) loadTypes(spec SiteSpec[T]) (*types.Types, error) {
+func (a *builder) loadTypes(spec SiteSpec) (*types.Types, error) {
 	ts := types.New()
 	for _, k := range spec.Kinds {
 		ts.RegisterKind(k)
