@@ -345,14 +345,18 @@ export default {
             try {
                 const ex = await window.$api.get('/admin/expand', { node: r.id, expr: '*' })
                 const expand = (ex.node && ex.node.expand) || {}
+                console.log('[openEdit] expand 返回:', { node: r.id, expandKeys: Object.keys(expand),
+                    expandSample: Object.entries(expand).map(([k, v]) => ({ field: k,
+                        items: (Array.isArray(v) ? v : [v]).filter(Boolean).map(n => ({ id: n.id, title: n.title, type: n.type })) })) })
                 const preset = {}
                 Object.keys(expand).forEach(f => {
                     const v = expand[f]
                     const items = Array.isArray(v) ? v : (v ? [v] : [])
                     preset[f] = items.map(n => ({ id: n.id, label: window.$api.refLabel(n, this.typeDefs[n.type] || null) + ' #' + n.id }))
                 })
+                console.log('[openEdit] preset:', preset)
                 this.dialog.form.refPreset = preset
-            } catch (_) {}
+            } catch (e) { console.log('[openEdit] expand 失败:', e) }
             this.dialog.visible = true
         },
         async save() {

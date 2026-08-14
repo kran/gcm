@@ -26,7 +26,7 @@ window.$api = {
     // 优先级: title 投影列 → slug → 类型定义字段序第一个非空字符串标量
     // （关系节点兜底, 如 employment 的 role）→ expand 引用合成 → #id。
     refLabel: function (n, def) {
-        if (!n) return '#?'
+        if (!n) { console.log('[refLabel] null node'); return '#?' }
         if (n.title) return n.title
         if (n.slug) return n.slug
         if (def) {
@@ -41,6 +41,9 @@ window.$api = {
             for (const m of arr) if (m && m.title) parts.push(m.title)
         }
         if (parts.length) return parts.join('·')
+        // 兜底: 打日志定位 — 为什么没走到 title/slug/def/expand
+        console.log('[refLabel] 兜底 #id:', { id: n.id, type: n.type, title: n.title, slug: n.slug,
+            hasDef: !!def, fields: n.fields, expandKeys: Object.keys(n.expand || {}) })
         return '#' + n.id
     },
 
