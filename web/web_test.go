@@ -60,7 +60,7 @@ func newSite(t *testing.T) (*Site, *core.Service) {
 		[]byte(`<p>not found: {{ .Path }}</p>`), 0644)
 
 	eng := render.New(tplDir, svc)
-	s := New(svc, eng, SiteOptions{Static: filepath.Join(dir, "static")})
+	s := New(svc, eng, filepath.Join(dir, "static"), nil, false)
 	return s, svc
 }
 

@@ -108,11 +108,7 @@ func (a *App[T]) build(spec SiteSpec[T]) (*web.Site, error) {
 	if spec.PageDataMaker != nil {
 		maker = func(ctx *web.CmsCtx, n *core.Node) any { return spec.PageDataMaker(svc, ctx, n) }
 	}
-	site := web.New(svc, eng, web.SiteOptions{
-		Static: spec.Static,
-		Maker:  maker,
-		Debug:  a.options.Debug,
-	})
+	site := web.New(svc, eng, spec.Static, maker, a.options.Debug)
 
 	// 组件: uploads（前台资源服务）+ admin（写入/管理）— 参数从 site 上下文取
 	site.MountUploads(spec.Uploads)

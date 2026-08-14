@@ -82,17 +82,6 @@ func (c *CmsCtx) Render(candidates []string, data map[string]any) {
 	c.site.renderHTML(c, candidates, data)
 }
 
-// SiteOptions 站点装配选项（web.New 的配置集中入口）。
-type SiteOptions struct {
-	Static string // 静态资源目录（空 = 不挂 /static）
-	// PageDataMaker 页面上下文构造（站点自定义形态; nil = 无 Page 数据）—
-	// 模板 .Page.X 访问站点自己定义的字段/方法。
-	Maker PageDataMaker
-	// Debug 开发模式: 渲染失败显示错误页（模板名/行号/原因/候选/数据 keys）;
-	// 生产: HTML 注释（不泄漏细节, 仅日志）。
-	Debug bool
-}
-
 // Site 站点装配: cho 路由 + 核心服务 + 渲染引擎 + 静态目录。
 type Site struct {
 	*cho.Cho[*CmsCtx]
@@ -118,15 +107,16 @@ func (s *Site) DB() *dba.SQL { return s.db }
 // Func 注册站点自定义模板函数（转发到渲染引擎; 站点业务查询在此组装）。
 func (s *Site) Func(name string, fn any) { s.eng.Func(name, fn) }
 
-// New 建站点（svc/eng 是引擎层产物; 站点形态选项走 SiteOptions）。
-func New(svc *core.Service, eng *render.Engine, opts SiteOptions) *Site {
+// New 建站点。static 是静态资源目录（空 = 不挂 /static）; maker 是页面上下文
+// 构造（nil = 无 Page）; debug 控制渲染失败出口（错误页 / HTML 注释）。
+func New(svc *core.Service, eng *render.Engine, static string, maker PageDataMaker, debug bool) *Site {
 	s := &Site{
 		db:            svc.DB(),
 		svc:           svc,
 		eng:           eng,
-		static:        opts.Static,
-		Debug:         opts.Debug,
-		PageDataMaker: opts.Maker,
+		static:        static,
+		Debug:         debug,
+		PageDataMaker: maker,
 	}
 	s.Cho = cho.New(func(w http.ResponseWriter, r *http.Request) *CmsCtx {
 		return &CmsCtx{BaseContext: cho.MakeBaseContext(w, r), site: s}
