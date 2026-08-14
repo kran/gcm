@@ -22,7 +22,10 @@ func (s *Service) fieldOnType(typeName, field string) (types.FieldDef, bool, err
 	if !ok {
 		return types.FieldDef{}, false, fmt.Errorf("core: field %q not on type %q", field, typeName)
 	}
-	return s.checkRefField(f)
+	if !s.types.IsRefKind(f.Kind) {
+		return types.FieldDef{}, false, fmt.Errorf("core: field %q is not a ref kind", f.Name)
+	}
+	return f, f.Symmetric, nil
 }
 
 // Traverse 沿 field 出边递归（向上: 祖先链）。maxHops 上限防环（有界原则）。

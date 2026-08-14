@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/kran/dba"
-	"github.com/kran/gcm/types"
 )
 
 // Edge 引用（无身份引用, edges 表的行）。
@@ -27,10 +26,19 @@ var ErrEdgeNotFound = errors.New("core: edge not found")
 // 校验（fail-loud）: from 存在、field 属于 from 类型且是引用系、
 // to 存在且类型匹配; 重复（UNIQUE）报错。
 func (s *Service) AddEdge(from, to int64, field string, sort int) (int64, error) {
-	f, _, err := s.refFieldMeta(from, field)
+	// 先查 from 节点（存在性 + 类型）→ fieldOnType 归属校验
+	fromNode, err := s.GetNodeById(from)
 	if err != nil {
 		return 0, err
 	}
+	if fromNode == nil {
+		return 0, fmt.Errorf("core: addref: from node %d not found", from)
+	}
+	f, _, err := s.fieldOnType(fromNode.Type, field)
+	if err != nil {
+		return 0, err
+	}
+	// to 存在且类型匹配（checkTarget 内部查节点）
 	if err := s.checkTarget(s.db, to, f.To); err != nil {
 		return 0, fmt.Errorf("core: addref: %w", err)
 	}
@@ -89,14 +97,7 @@ func (s *Service) OutEdges(typeName string, from int64, field string, page, size
 // InEdges 入边列表: 指向 to、按 field 过滤、分页（反向查询 — 边双向, 引擎原语直查）。
 // symmetric 字段: 双向展开（与 OutEdges 同一集合）。
 func (s *Service) InEdges(to int64, field string, page, size int) ([]Edge, int64, error) {
-	_, sym, err := s.refFieldMetaGlobal(field)
-	if err != nil {
-		return nil, 0, err
-	}
-	if sym {
-		return s.edgePage("field = #{1} AND (from_node = #{2} OR to_node = #{2})",
-			[]any{field, to}, page, size)
-	}
+	// 宽松: 不校验字段（拼错 → 空结果; symmetric 双向由 OutEdges 承担）
 	return s.edgePage("field = #{1} AND to_node = #{2}",
 		[]any{field, to}, page, size)
 }
@@ -167,44 +168,6 @@ func (s *Service) Merge(from, to int64) error {
 }
 
 // ── 工具 ─────────────────────────────────────────
-
-// refFieldMeta 按宿主节点的类型查字段定义（出边查询 — 字段归属宿主类型）。
-func (s *Service) refFieldMeta(nodeID int64, field string) (types.FieldDef, bool, error) {
-	n, err := s.GetNodeById(nodeID)
-	if err != nil {
-		return types.FieldDef{}, false, err
-	}
-	if n == nil {
-		return types.FieldDef{}, false, fmt.Errorf("core: ref: node %d not found", nodeID)
-	}
-	td, ok := s.types.Type(n.Type)
-	if !ok {
-		return types.FieldDef{}, false, fmt.Errorf("core: type %q not defined", n.Type)
-	}
-	f, ok := types.FieldByName(td, field)
-	if !ok {
-		return types.FieldDef{}, false, fmt.Errorf("core: field %q not on type %q", field, n.Type)
-	}
-	return s.checkRefField(f)
-}
-
-// refFieldMetaGlobal 按字段名全局查定义（入边查询 — 字段归属引用方类型）。
-func (s *Service) refFieldMetaGlobal(field string) (types.FieldDef, bool, error) {
-	for _, typeName := range s.types.Names() {
-		if f, ok := s.types.Field(typeName, field); ok {
-			return s.checkRefField(f)
-		}
-	}
-	return types.FieldDef{}, false, fmt.Errorf("core: ref field %q not found in any type", field)
-}
-
-// checkRefField 字段必须是引用系; 返回定义 + symmetric。
-func (s *Service) checkRefField(f types.FieldDef) (types.FieldDef, bool, error) {
-	if !s.types.IsRefKind(f.Kind) {
-		return types.FieldDef{}, false, fmt.Errorf("core: field %q is not a ref kind", f.Name)
-	}
-	return f, f.Symmetric, nil
-}
 
 // edgePage 分页查 edges（占位符从 #{n} 递增）。
 func (s *Service) edgePage(where string, args []any, page, size int) ([]Edge, int64, error) {

@@ -21,6 +21,21 @@ func (s *Service) nodesByIDs(ids []int64) ([]Node, error) {
 	return rows, nil
 }
 
+// refFieldMetaGlobal 全局字段查找（expand 专用, 纯内存）: 找第一个声明 field
+// 的 ref 系字段 — expand 不校验归属（API 参数可写任何类型的字段 — 该节点
+// 类型无边 = 空展开）, 防 ghost + 取 Kind 形态。
+func (s *Service) refFieldMetaGlobal(field string) (types.FieldDef, bool, error) {
+	for _, typeName := range s.types.Names() {
+		if f, ok := s.types.Field(typeName, field); ok {
+			if !s.types.IsRefKind(f.Kind) {
+				return types.FieldDef{}, false, fmt.Errorf("core: field %q is not a ref kind", f.Name)
+			}
+			return f, f.Symmetric, nil
+		}
+	}
+	return types.FieldDef{}, false, fmt.Errorf("core: ref field %q not found in any type", field)
+}
+
 // ── ExpandPath: 表达式驱动的路径展开 ───────────────
 //
 // 表达式语法（PocketBase 风格, 符号前缀可改）:
@@ -148,11 +163,17 @@ func (s *Service) autoExpandExpr(typeName string) string {
 // expandBatch 在 nodes 批量展开 path[segIdx:]: 一次批量查边 + 批量取节点。
 func (s *Service) expandBatch(nodes []*Node, path []types.Seg, segIdx int) error {
 	seg := path[segIdx]
-	// 字段校验: 全局定义（ref 系）
+	// 全局形态查找（纯内存）: expand 不校验归属 — API 参数可能写任何类型的
+	// 字段（该节点类型无边 = 空展开）; 防 ghost + 取 Kind 决定单值/数组形态。
 	f, _, err := s.refFieldMetaGlobal(seg.Field)
 	if err != nil {
 		return fmt.Errorf("core: expand %q: %w", seg.Field, err)
 	}
+	kind, ok := s.types.Kind(f.Kind)
+	if !ok {
+		return fmt.Errorf("core: expand: unknown kind %q", f.Kind)
+	}
+	single := kind.Class() == types.ClassRef && !seg.In // 入边永远数组
 	// 1. 批量查边（该层所有节点的出/入边, 一次查询）
 	ids := make([]int64, 0, len(nodes))
 	for _, n := range nodes {
@@ -185,12 +206,7 @@ func (s *Service) expandBatch(nodes []*Node, path []types.Seg, segIdx int) error
 	for i := range targets {
 		byID[targets[i].ID] = &targets[i]
 	}
-	// 3. 挂 Expand（形态: ClassRef 单值 / ClassRefList 数组）
-	kind, ok := s.types.Kind(f.Kind)
-	if !ok {
-		return fmt.Errorf("core: expand: unknown kind %q", f.Kind)
-	}
-	single := kind.Class() == types.ClassRef && !seg.In // 入边永远数组
+	// 3. 挂 Expand（形态: 出边段 ClassRef 单值 / 其余数组 — 入边永远数组）
 	for _, n := range nodes {
 		if n.Expand == nil {
 			n.Expand = map[string]any{}
