@@ -151,12 +151,6 @@ func (f *ftsIndex) Search(q, typ string, page, size int) ([]Node, int64, error) 
 	}
 	// phrase 查询: 连续 bigram = 原文子串（多词精确）; 单 bigram 直接匹配
 	match := `"` + bq + `"`
-	if page < 1 {
-		page = 1
-	}
-	if size < 1 {
-		size = 20
-	}
 	var total int64
 	where := `nodes_fts MATCH #{1}`
 	args := []any{match}

@@ -171,12 +171,6 @@ func (s *Service) Merge(from, to int64) error {
 
 // edgePage 分页查 edges（占位符从 #{n} 递增）。
 func (s *Service) edgePage(where string, args []any, page, size int) ([]Edge, int64, error) {
-	if page < 1 {
-		page = 1
-	}
-	if size < 1 {
-		size = 20
-	}
 	var total int64
 	found, err := s.db.Add(
 		`SELECT COUNT(1) FROM edges WHERE `+where, args...).Get(&total)

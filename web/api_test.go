@@ -53,7 +53,7 @@ func TestAPINodes(t *testing.T) {
 		t.Fatalf("total=%d items=%d", out.Total, len(out.Items))
 	}
 	// 4. Lisp filter: 作者是张三
-	rec = get(t, s, "/api/nodes/article?filter="+urlq(`(get (-> authors) $.name "张三")`))
+	rec = get(t, s, "/api/nodes/article?filter="+urlq(`(edge ->authors (= $name "张三"))`))
 	if rec.Code != 200 {
 		t.Fatalf("filter: %d %s", rec.Code, rec.Body.String())
 	}

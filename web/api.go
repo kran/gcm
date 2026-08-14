@@ -72,15 +72,6 @@ func (s *Site) apiNodes(ctx *CmsCtx) {
 	}
 	page := ctx.QueryInt("page", 1)
 	size := ctx.QueryInt("size", 20)
-	if page < 1 {
-		page = 1
-	}
-	if size < 1 {
-		size = 20
-	}
-	if size > 100 {
-		size = 100
-	}
 	expand := strings.TrimSpace(ctx.Query("expand"))
 
 	// 类型过滤由 API 层构建（{type} 路径参数 → (= type "x")）

@@ -34,9 +34,6 @@ func (s *Service) Traverse(typeName string, start int64, field string, maxHops i
 	if _, _, err := s.fieldOnType(typeName, field); err != nil {
 		return nil, err
 	}
-	if maxHops < 1 {
-		maxHops = 1
-	}
 	return s.walk(`
 		WITH RECURSIVE walk(id, depth) AS (
 			SELECT to_node, 1 FROM edges WHERE field = #{1} AND from_node = #{2}
@@ -54,9 +51,6 @@ func (s *Service) Traverse(typeName string, start int64, field string, maxHops i
 func (s *Service) Ancestors(typeName string, start int64, field string, maxHops int) ([]*Node, error) {
 	if _, _, err := s.fieldOnType(typeName, field); err != nil {
 		return nil, err
-	}
-	if maxHops < 1 {
-		maxHops = 1
 	}
 	ids, err := s.walk(`
 		WITH RECURSIVE anc(id, depth) AS (
@@ -93,9 +87,6 @@ func (s *Service) Subtree(typeName string, start int64, field string, maxHops in
 	if _, _, err := s.fieldOnType(typeName, field); err != nil {
 		return nil, err
 	}
-	if maxHops < 1 {
-		maxHops = 1
-	}
 	return s.walk(`
 		WITH RECURSIVE walk(id, depth) AS (
 			SELECT from_node, 1 FROM edges WHERE field = #{1} AND to_node = #{2}
@@ -112,9 +103,6 @@ func (s *Service) Subtree(typeName string, start int64, field string, maxHops in
 func (s *Service) EquivalenceClass(typeName string, start int64, field string, maxHops int) ([]int64, error) {
 	if _, _, err := s.fieldOnType(typeName, field); err != nil {
 		return nil, err
-	}
-	if maxHops < 1 {
-		maxHops = 1
 	}
 	return s.walk(`
 		WITH RECURSIVE walk(id, depth) AS (

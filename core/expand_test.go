@@ -120,19 +120,23 @@ func TestExpandPathMixed(t *testing.T) {
 	}
 }
 
-// 校验: 未知字段/非 ref 字段 fail-loud; 空/`*` = 自动展开（不再报错）。
+// 宽松: 未知字段/非 ref 字段不报错（空展开）; 空/`*` = 自动展开。
 func TestExpandPathValidation(t *testing.T) {
 	ts := newTypes(t, expandPathTypes)
 	s := New(testDB(t), ts)
 	art, _ := s.CreateNode(&Node{Type: "article", Fields: Fields{"title": "甲"}})
-	if _, err := s.ExpandPath(art, "ghost"); err == nil {
-		t.Fatal("unknown field must fail")
+	if n, err := s.ExpandPath(art, "ghost"); err != nil {
+		t.Fatalf("unknown field must be silent: %v", err)
+	} else if v, has := n.Expand["ghost"]; !has || len(v.([]*Node)) != 0 {
+		t.Fatalf("unknown field expand must be empty container: %v", n.Expand)
 	}
 	if _, err := s.ExpandPath(art, "  "); err != nil {
 		t.Fatalf("empty expr = auto expand: %v", err)
 	}
-	if _, err := s.ExpandPath(art, "title"); err == nil {
-		t.Fatal("non-ref field must fail")
+	if n, err := s.ExpandPath(art, "title"); err != nil {
+		t.Fatalf("non-ref field must be silent: %v", err)
+	} else if v, has := n.Expand["title"]; !has || len(v.([]*Node)) != 0 {
+		t.Fatalf("non-ref field expand must be empty container: %v", n.Expand)
 	}
 }
 

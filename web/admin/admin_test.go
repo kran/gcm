@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -252,9 +253,9 @@ func TestListNodesFilter(t *testing.T) {
 	authedReq(t, s, http.MethodPost, "/admin/nodes?type=article",
 		map[string]any{"fields": map[string]any{"body": "y"}})
 
-	// filter 查询: authors ~ [id]
+	// filter 查询（Lisp）: (in ->authors [id])
 	got := authedReq(t, s, http.MethodGet,
-		fmt.Sprintf("/admin/nodes?type=article&filter=authors%%20~%%20%%5B%d%%5D", p1ID), nil)
+		fmt.Sprintf("/admin/nodes?type=article&filter=%s", url.QueryEscape(fmt.Sprintf(`(in ->authors [%d])`, p1ID))), nil)
 	var out struct {
 		Items []core.Node `json:"items"`
 	}
@@ -265,7 +266,7 @@ func TestListNodesFilter(t *testing.T) {
 		t.Fatalf("filter list: %d items", len(out.Items))
 	}
 	// 非法 filter → 400
-	bad := authedReq(t, s, http.MethodGet, "/admin/nodes?type=article&filter=authors~", nil)
+	bad := authedReq(t, s, http.MethodGet, "/admin/nodes?type=article&filter=(bogus-fn)", nil)
 	if bad.Code != 400 {
 		t.Fatalf("bad filter must 400, got %d", bad.Code)
 	}

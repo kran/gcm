@@ -221,12 +221,6 @@ func (s *Service) syncSearchAndFire(tx *dba.SQL, n *Node) error {
 
 // ListAny 通用分页列表（管理通道: where 自定义, 占位符从 #{1} 起）。
 func (s *Service) ListAny(where string, args []any, page, size int) ([]Node, int64, error) {
-	if page < 1 {
-		page = 1
-	}
-	if size < 1 {
-		size = 20
-	}
 	return s.dao.Page(page, size, where+" ORDER BY id DESC", args...)
 }
 
@@ -312,12 +306,6 @@ func (s *Service) List(typeName string, status int, page, size int) ([]Node, int
 	if status >= 0 {
 		where += " AND status = #{2}"
 		args = append(args, status)
-	}
-	if page < 1 {
-		page = 1
-	}
-	if size < 1 {
-		size = 20
 	}
 	total, err := s.dao.Count(where, args...)
 	if err != nil {
@@ -527,12 +515,6 @@ func (s *Service) ListQ(q ListQuery, params ...map[string]any) ([]Node, int64, e
 	var p map[string]any
 	if len(params) > 0 {
 		p = params[0]
-	}
-	if q.Page < 1 {
-		q.Page = 1
-	}
-	if q.Size < 1 {
-		q.Size = 20
 	}
 	// dba.Page 协议: ${F:*}（列槽, count 时换 COUNT(1)）+ ${order:}（排序槽,
 	// count 自动清空）— count/data 同 base 不可变分叉, filter 只编译一次。
