@@ -108,6 +108,9 @@ func (a *builder) build(spec SiteSpec) (*web.Site, error) {
 	if err := web.DefineRenderHooks(svc); err != nil {
 		return nil, fmt.Errorf("define render hooks: %w", err)
 	}
+	if err := admin.DefineHooks(svc); err != nil {
+		return nil, fmt.Errorf("define admin hooks: %w", err)
+	}
 	if spec.Setup != nil {
 		if err := spec.Setup(site, svc); err != nil {
 			return nil, fmt.Errorf("setup: %w", err)

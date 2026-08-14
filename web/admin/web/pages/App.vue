@@ -78,6 +78,7 @@ export default {
     setup() {
         var route = useRoute()
         var router = useRouter()
+        var Panel = window.Panel
         var menuData = ref(window.AppConfig.menu) // ref: 插件面板动态 push 后 UI 刷新
         var defaultPage = window.AppConfig.defaultPage
 
@@ -113,9 +114,27 @@ export default {
             try {
                 user.value = await $api.me()
                 phase.value = 'app'
+                loadPanels()   // 站点面板: 动态注册路由 + 菜单
             } catch (_) {
                 phase.value = 'login'
             }
+        }
+
+        // 站点面板: /admin/panels 返回 [{path, title, vue}] — 动态 addRoute + 菜单
+        async function loadPanels() {
+            try {
+                var res = await $api.get('/admin/panels')
+                ;(res.items || []).forEach(function (p) {
+                    if (!p.vue || !p.path) return
+                    var name = 'panel' + p.path.replace(/[^a-zA-Z0-9]/g, '')
+                    router.addRoute({ name: name, path: p.path, component: Vue.defineAsyncComponent({
+                        loader: function () { return Panel.loadComponent(p.vue) },
+                        loadingComponent: { template: '<div style="padding:40px;text-align:center;color:#999;">加载中...</div>' },
+                        delay: 100,
+                    }) })
+                    menuData.value.push({ key: name, label: p.title, icon: 'Grid', route: name })
+                })
+            } catch (e) { console.error('[panel] loadPanels failed:', e) }
         }
 
         async function doLogin() {

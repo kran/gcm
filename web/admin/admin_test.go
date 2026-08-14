@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+
+	"github.com/kran/cho"
 	"strconv"
 	"strings"
 	"testing"
@@ -69,6 +71,72 @@ func newAdminSite(t *testing.T) (*web.Site, *core.Service) {
 	s := web.New(svc, eng)
 	Mount(s, "")
 	return s, svc
+}
+
+// 站点专门管理: AdminMount 挂受保护端点 + 注册面板。
+func TestAdminMountPanels(t *testing.T) {
+	dir := t.TempDir()
+	db, err := dba.Open("sqlite", filepath.Join(dir, "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := migrations.Up(db); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	ts := types.New()
+	if err := ts.Load([]byte(adminTypes)); err != nil {
+		t.Fatal(err)
+	}
+	svc := core.New(db, ts)
+	// 账号引导（login helper 用 admin/testpass123）
+	if _, err := EnsureDefaults(db); err != nil {
+		t.Fatal(err)
+	}
+	if err := NewService(db).SetPassword("testpass123"); err != nil {
+		t.Fatal(err)
+	}
+	eng := render.New(filepath.Join(dir, "templates"), svc)
+	if err := web.DefineRenderHooks(svc); err != nil {
+		t.Fatal(err)
+	}
+	// 站点: 挂自定义端点（自动带认证）+ 注册面板 — 事件须先 Define
+	if err := DefineHooks(svc); err != nil {
+		t.Fatal(err)
+	}
+	svc.Hooks().AddHook(AdminMount, func(g *cho.Cho[*web.CmsCtx], panels *[]AdminPanel) error {
+		g.Get("/guestbook", func(ctx *web.CmsCtx) {
+			_ = ctx.Json(http.StatusOK, map[string]any{"items": []string{"留言1"}})
+		})
+		*panels = append(*panels, AdminPanel{
+			Path: "/guestbook", Title: "留言本",
+			Vue: "/admin/ui-extras/guestbook.vue",
+		})
+		return nil
+	})
+	s := web.New(svc, eng)
+	Mount(s, "")
+
+	// 未登录 → 401（认证保护生效）
+	req := httptest.NewRequest(http.MethodGet, "/admin/guestbook", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("unauth: %d", rec.Code)
+	}
+	// 登录后 → 200 + 数据
+	rec = authedReq(t, s, http.MethodGet, "/admin/guestbook", nil)
+	if rec.Code != 200 {
+		t.Fatalf("authed: %d", rec.Code)
+	}
+	// /admin/panels 返回注册的面板
+	rec = authedReq(t, s, http.MethodGet, "/admin/panels", nil)
+	var out struct {
+		Items []AdminPanel `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || len(out.Items) != 1 || out.Items[0].Title != "留言本" {
+		t.Fatalf("panels: %s", rec.Body.String())
+	}
 }
 
 // login 登录并返回 cookie。

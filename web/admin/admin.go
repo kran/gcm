@@ -18,6 +18,7 @@ import (
 
 	"github.com/kran/cho"
 	"github.com/kran/gcm/core"
+	"github.com/kran/gcm/core/hook"
 	"github.com/kran/gcm/types"
 	"github.com/kran/gcm/web"
 )
@@ -28,6 +29,7 @@ type backend struct {
 	core      *core.Service
 	ts        *types.Types
 	uploadDir string
+	panels    []AdminPanel // 站点面板（AdminMount 收集）
 }
 
 // internal 服务器错误统一出口: 细节进日志, 响应透传（admin 是站长工具,
@@ -120,10 +122,29 @@ func (b *backend) upload(ctx *web.CmsCtx) {
 	_ = ctx.Json(http.StatusOK, map[string]any{"name": name, "path": "/uploads/" + name})
 }
 
+// AdminPanel 一个后台面板（站点专门管理: 菜单项 + 组件入口）。
+type AdminPanel struct {
+	Path  string `json:"path"`  // 组内 API 前缀, 如 "/guestbook"
+	Title string `json:"title"` // 后台菜单名
+	Vue   string `json:"vue"`   // 面板组件完整 URL（认证路由, 站点自己挂）
+}
+
+// AdminMount 后台面板挂载事件（admin.Mount 建 /admin 认证组后 Fire）:
+// 原型 func(g *cho.Cho[*web.CmsCtx], panels *[]AdminPanel) error —
+// 站点 AddHook 挂自己的受保护端点（自动带登录守卫）+ 注册后台菜单。
+const AdminMount = "admin.mount"
+
 // Mount 挂载 /admin 组到站点（登录保护; 公开入口: login/ui/upload）。
 // uploadDir 是上传落盘目录（可为空 = 禁用上传）; /uploads/* 服务由站点
 // 装配层挂载（gcm.NewApp — 前台资源不依赖 admin 是否启用）。
 // svc/ts 从 site 上下文取（site.Service() / svc.Types()）— 装配参数最小化。
+// DefineHooks 声明后台事件（AdminMount — 装配早期调用, 站点 Setup/AddHook 前）;
+// 与 web.DefineRenderHooks 同位置（gcm 装配序列）。
+func DefineHooks(svc *core.Service) error {
+	return svc.Hooks().Define(hook.Spec{Name: AdminMount,
+		Proto: func(*cho.Cho[*web.CmsCtx], *[]AdminPanel) error { return nil }})
+}
+
 func Mount(s *web.Site, uploadDir string) {
 	svc := s.Service()
 	b := &backend{svc: NewService(s.DB()), core: svc, ts: svc.Types(), uploadDir: uploadDir}
@@ -136,6 +157,13 @@ func Mount(s *web.Site, uploadDir string) {
 		g.Post("/upload", b.upload)
 		g.Group("", func(authed *cho.Cho[*web.CmsCtx]) {
 			authed.UseCtx(b.requireAuth)
+			// 站点专门管理: Fire AdminMount — 站点挂受保护端点 + 注册面板
+			panels := &[]AdminPanel{}
+			if err := svc.Hooks().Fire(AdminMount, authed, panels); err != nil {
+				panic(fmt.Sprintf("admin: fire mount hook: %v", err))
+			}
+			b.panels = *panels
+			authed.Get("/panels", b.listPanels)
 			authed.Get("/me", b.me)
 			authed.Get("/types", b.types)
 			authed.Get("/nodes", b.listNodes)
@@ -187,6 +215,11 @@ func (b *backend) logout(ctx *web.CmsCtx) {
 		Name: cookieName, Value: "", Path: "/", MaxAge: -1,
 	})
 	_ = ctx.Json(http.StatusOK, map[string]any{"ok": true})
+}
+
+// listPanels 站点面板列表（前端动态注册菜单 + 组件）。
+func (b *backend) listPanels(ctx *web.CmsCtx) {
+	_ = ctx.Json(http.StatusOK, map[string]any{"items": b.panels})
 }
 
 // requireAuth 会话校验中间件（cho 类型化中间件: 校验失败短路）。
