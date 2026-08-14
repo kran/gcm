@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
-	"net/http"
 	"time"
 
 	"github.com/kran/dba"
@@ -68,30 +67,28 @@ type Options struct {
 	SQLLogger dba.LogFunc
 }
 
-// App 多站点应用: HostMux 按域名分发到各站点。
-type App[T any] struct {
-	site    *web.Site
-	options Options
-}
-
 // 多站组合: HostMux 重导出（gcm 门面提供; 装配层与站点解耦 —
-// 开发者各自 NewApp 装配 site, 再 mux.Add(hosts, app.Handler()) 组合）。
+// 各自 NewSite 装配, 再 mux.Add(hosts, site) 组合）。
 type HostMux = web.HostMux
 
 // NewHostMux 建多站分发器（按 Host 头分发; 未知 host 走 fallback）。
 func NewHostMux() *HostMux { return web.NewHostMux() }
 
-// NewApp 装配**一个**站点。每个站点一个 App 实例（各自 PageData 类型 T —
-// 多站点类型不同各自 NewApp）。返回 *App[T]; Handler() 供开发者组合挂载
-// （web.HostMux 是可选组合件 — 多站由开发者自己 mux.Add 挂载）。
-func NewApp[T any](opts Options, spec SiteSpec[T]) (*App[T], error) {
-	app := &App[T]{options: opts}
-	site, err := app.build(spec)
+// builder 装配器（内部 — NewSite 的工作单元）。
+type builder[T any] struct {
+	options Options
+}
+
+// NewSite 装配**一个**站点, 返回 *web.Site（泛型 T 只在装配期 —
+// PageDataMaker 类型; 运行时是 *web.Site, Listen/Handler 直接可用）。
+// 多站: 各自 NewSite, 再 gcm.NewHostMux() + mux.Add(hosts, site) 组合。
+func NewSite[T any](opts Options, spec SiteSpec[T]) (*web.Site, error) {
+	b := &builder[T]{options: opts}
+	site, err := b.build(spec)
 	if err != nil {
 		return nil, fmt.Errorf("gcm: %w", err)
 	}
-	app.site = site
-	return app, nil
+	return site, nil
 }
 
 // build 单站点装配 — 按层分节（cmx 风格: 每层一个小函数, 顺序执行）:
@@ -102,7 +99,7 @@ func NewApp[T any](opts Options, spec SiteSpec[T]) (*App[T], error) {
 //	④ Web     web.New（站点形态选项）
 //	⑤ 组件    uploads 服务 + admin 挂载（参数从 site 上下文取）
 //	⑥ 业务    Setup 钩子（站点路由/模板函数/seed）
-func (a *App[T]) build(spec SiteSpec[T]) (*web.Site, error) {
+func (a *builder[T]) build(spec SiteSpec[T]) (*web.Site, error) {
 	db, err := a.openDB(spec)
 	if err != nil {
 		return nil, err
@@ -142,7 +139,7 @@ func (a *App[T]) build(spec SiteSpec[T]) (*web.Site, error) {
 }
 
 // openDB ① 存储: 打开 + SQL 日志 + 迁移 + admin 账号引导。
-func (a *App[T]) openDB(spec SiteSpec[T]) (*dba.SQL, error) {
+func (a *builder[T]) openDB(spec SiteSpec[T]) (*dba.SQL, error) {
 	db, err := dba.Open("sqlite", spec.DBPath)
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
@@ -172,7 +169,7 @@ func (a *App[T]) openDB(spec SiteSpec[T]) (*dba.SQL, error) {
 }
 
 // loadTypes ② 类型: 站点自定义 kind 注册（types.Load 前）+ types.yaml。
-func (a *App[T]) loadTypes(spec SiteSpec[T]) (*types.Types, error) {
+func (a *builder[T]) loadTypes(spec SiteSpec[T]) (*types.Types, error) {
 	ts := types.New()
 	for _, k := range spec.Kinds {
 		ts.RegisterKind(k)
@@ -183,16 +180,4 @@ func (a *App[T]) loadTypes(spec SiteSpec[T]) (*types.Types, error) {
 		}
 	}
 	return ts, nil
-}
-
-// Handler 应用入口: 单站直连 site; 多站组合用 NewHostMux 各自 Add。
-func (a *App[T]) Handler() http.Handler { return a.site }
-
-// Site 站点实例（高级装配/组合用）。
-func (a *App[T]) Site() *web.Site { return a.site }
-
-// Listen 监听并服务（单站直连 site）。
-func (a *App[T]) Listen(addr string) error {
-	log.Printf("gcm: listening on %s", addr)
-	return http.ListenAndServe(addr, a.site)
 }

@@ -58,7 +58,7 @@ func main() {
 		log.Fatal(err)
 	}
 	// PocketBase 形态: 一个 App 装配全部（db/迁移/类型/引擎/admin/账号引导）
-	app, err := gcm.NewApp(gcm.Options{AdminPass: *adminPass}, gcm.SiteSpec[any]{
+	site, err := gcm.NewSite(gcm.Options{AdminPass: *adminPass}, gcm.SiteSpec[any]{
 		Hosts:     []string{"localhost", "127.0.0.1"},
 		DBPath:    "example.db",
 		Types:     yaml,
@@ -71,7 +71,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Fatal(app.Listen(":8080"))
+	log.Fatal(site.Listen(":8080"))
 }
 
 // setup 站点业务: seed + 模板函数 + 自定义路由（Setup 钩子里写 Go 代码）。

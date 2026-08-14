@@ -29,7 +29,7 @@ types:
 `)
 	tplA := filepath.Join(dir, "tplA")
 	tplB := filepath.Join(dir, "tplB")
-	appA, err := NewApp(Options{}, SiteSpec[any]{
+	appA, err := NewSite(Options{}, SiteSpec[any]{
 		Hosts:     []string{"a.com"},
 		DBPath:    filepath.Join(dir, "a.db"),
 		Types:     typesA,
@@ -42,7 +42,7 @@ types:
 	if err != nil {
 		t.Fatal(err)
 	}
-	appB, err := NewApp(Options{}, SiteSpec[any]{
+	appB, err := NewSite(Options{}, SiteSpec[any]{
 		Hosts:     []string{"b.com"},
 		DBPath:    filepath.Join(dir, "b.db"),
 		Types:     typesB,
@@ -90,7 +90,7 @@ types:
 	if w.Code != 200 {
 		t.Fatalf("fallback must serve site A: %d", w.Code)
 	}
-	if appA.Site() == nil || appB.Site() == nil {
+	if appA == nil || appB == nil {
 		t.Fatal("sites missing")
 	}
 }

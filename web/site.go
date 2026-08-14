@@ -1,11 +1,13 @@
 package web
 
 import (
+	"log"
+	"net/http"
+
 	"github.com/kran/cho"
 	"github.com/kran/dba"
 	"github.com/kran/gcm/core"
 	"github.com/kran/gcm/core/render"
-	"net/http"
 )
 
 // Site 站点装配: cho 路由 + 核心服务 + 渲染引擎 + 静态目录。
@@ -32,6 +34,15 @@ func (s *Site) DB() *dba.SQL { return s.db }
 
 // Func 注册站点自定义模板函数（转发到渲染引擎; 站点业务查询在此组装）。
 func (s *Site) Func(name string, fn any) { s.eng.Func(name, fn) }
+
+// Listen 监听并服务（单站直连）。
+func (s *Site) Listen(addr string) error {
+	log.Printf("gcm: listening on %s", addr)
+	return http.ListenAndServe(addr, s)
+}
+
+// Handler HTTP 入口（组合/多站 mux.Add 用; 等价于 site 本身）。
+func (s *Site) Handler() http.Handler { return s }
 
 // New 建站点: cho + CmsCtx + 引擎引用。零挂载零注册 —
 // 路由绑定（Mount*）与渲染事件（DefineRenderHooks）由装配层按序调用,
