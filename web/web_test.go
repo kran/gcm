@@ -164,22 +164,20 @@ func TestDebugRenderError(t *testing.T) {
 	_ = dir
 }
 
-// NodeEnrich: 默认 url 注入（TypeDef.URL 模式 / 无声明 /node/{slug|id}）。
+// NodeEnrich: 默认 url 注入（统一 /node/{slug|id} — URL 模式是站点层的事）。
 func TestNodeEnrichURL(t *testing.T) {
 	s, svc := newSite(t)
-	// smokeTypes 的 article 声明 url: /article/{slug} → 按模式替换
 	a, _ := svc.CreateNode(&core.Node{Type: "article", Slug: "hello", Status: core.StatusPublished,
 		Fields: core.Fields{"body": "x"}})
 	n, _ := svc.GetNodeById(a)
-	if s.nodeURL(n) != "/article/hello" {
-		t.Fatalf("pattern url: %s", s.nodeURL(n))
+	if s.nodeURL(n) != "/node/hello" {
+		t.Fatalf("node url: %s", s.nodeURL(n))
 	}
-	// 无 slug → {slug} 替换为空? 看 nodeURL 逻辑: 替换后不含 { → 返回; slug 空则 /node/{id}
-	// person 类型无 URL 声明 → /node/{slug}
-	p, _ := svc.CreateNode(&core.Node{Type: "person", Slug: "p1", Status: core.StatusPublished,
-		Fields: core.Fields{"name": "x"}})
-	pn, _ := svc.GetNodeById(p)
-	if s.nodeURL(pn) != "/node/p1" {
-		t.Fatalf("no pattern url: %s", s.nodeURL(pn))
+	// 无 slug → /node/{id}
+	b, _ := svc.CreateNode(&core.Node{Type: "article", Status: core.StatusPublished,
+		Fields: core.Fields{"body": "y"}})
+	bn, _ := svc.GetNodeById(b)
+	if s.nodeURL(bn) != "/node/"+strconv.FormatInt(b, 10) {
+		t.Fatalf("no slug url: %s", s.nodeURL(bn))
 	}
 }

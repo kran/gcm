@@ -50,8 +50,8 @@ func TestLoadValid(t *testing.T) {
 	if !ok {
 		t.Fatal("article type missing")
 	}
-	if td.URL != "/article/{slug}" || !td.Search {
-		t.Fatalf("article url/search: %+v", td)
+	if !td.Search {
+		t.Fatalf("article search: %+v", td)
 	}
 	if got := td.TemplateCandidates(); len(got) != 2 || got[0] != "node--article.html" {
 		t.Fatalf("candidates: %v", got)
@@ -87,7 +87,11 @@ func TestLoadInvalid(t *testing.T) {
 		{"ref to undefined", base + "      - { name: authors, kind: ref, to: ghost }", "not defined"},
 		{"algebra mutual", base + "      - { name: r, kind: \"ref[]\", to: article, symmetric: true, transitive: true }",
 			"mutually exclusive"},
-		{"bad url", "types:\n  article:\n    url: /bad space/{slug}\n    fields: []", "url"},
+	}
+	// url 字段框架层已移除 — yaml 中出现被忽略（不报错）
+	ts := New()
+	if err := ts.Load([]byte("types:\n  article:\n    url: /bad space/{slug}\n    fields: []")); err != nil {
+		t.Fatalf("url field must be ignored: %v", err)
 	}
 	for _, c := range cases {
 		ts := New()

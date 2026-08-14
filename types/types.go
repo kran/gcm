@@ -20,7 +20,6 @@ import (
 // TypeDef 类型定义。
 type TypeDef struct {
 	Name   string     `json:"name"`                 // 类型名（配置键）
-	URL    string     `yaml:"url" json:"url"`       // URL 模式: /article/{slug} 或 /node/{id}
 	Search bool       `yaml:"search" json:"search"` // 参与全文检索（FTS）
 	View   string     `yaml:"view" json:"view"`     // 展示形态: tree / list（空 = list）
 	Title  string     `yaml:"title" json:"title"`   // 标题字段名（映射到 nodes.title 列）; 空 = 无
@@ -187,7 +186,6 @@ func (t *Types) Field(typeName, fieldName string) (FieldDef, bool) {
 
 var (
 	nameRe   = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
-	urlRe    = regexp.MustCompile(`^/([a-z0-9_-]+/)?(\{slug\}|\{id\}|[a-z0-9_-]+)?$`)
 	reserved = map[string]bool{"node": true, "types": true, "settings": true}
 	// 节点列字段名: slug/status/sort 是 Node 的列（不是类型字段）,
 	// 类型定义声明它们会存进 fields JSON 而非列 — 防歧义, 直接拒绝
@@ -201,7 +199,7 @@ var (
 )
 
 func (t *Types) validate(defs map[string]TypeDef) error {
-	// 容器只做通用校验（类型名/URL/字段名/重复/kind 存在）,
+	// 容器只做通用校验（类型名/字段名/重复/kind 存在）,
 	// 具体 kind 的字段约束由 kind 自己的 ValidateField 裁判。
 	for name, td := range defs {
 		if !nameRe.MatchString(name) {
@@ -209,9 +207,6 @@ func (t *Types) validate(defs map[string]TypeDef) error {
 		}
 		if reserved[name] {
 			return fmt.Errorf("types: type %q is reserved", name)
-		}
-		if td.URL != "" && !urlRe.MatchString(td.URL) {
-			return fmt.Errorf("types: type %q: url %q invalid (want /article/{slug} or /node/{id})", name, td.URL)
 		}
 		if td.Title != "" {
 			if err := t.validateTitle(name, td, defs); err != nil {

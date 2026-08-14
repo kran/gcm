@@ -41,7 +41,7 @@ const HookNodeRender = "web.node.render"
 
 // HookNodeEnrich 节点数据增强事件（节点页渲染前; 默认注入 url）:
 // 原型 func(ctx *CmsCtx, n *core.Node) error — 站点 AddHook 覆盖默认 url
-// 生成或追加附加数据（n.Extra["xxx"]）。默认实现按 TypeDef.URL 生成 url。
+// 生成或追加附加数据（n.Extra["xxx"]）。默认实现生成 /node/{slug|id} url。
 const HookNodeEnrich = "web.node.enrich"
 
 // CmsCtx 请求上下文（富上下文: 携带站点引用, 自定义路由一行拿引擎 —
@@ -150,16 +150,9 @@ func (s *Site) mount() {
 
 // ── 渲染出口 ─────────────────────────────────────
 
-// nodeURL 节点 URL: 按 TypeDef.URL 模式替换（/article/{slug}）;
-// 无 URL 声明或 slug 空 → /node/{slug|id}。
+// nodeURL 节点 URL: 统一 /node/{slug|id}（URL 模式是站点渲染层的事 —
+// gcm 框架不预设; 站点自定义用 HookNodeEnrich 覆盖 Extra["url"]）。
 func (s *Site) nodeURL(n *core.Node) string {
-	if td, ok := s.svc.Types().Type(n.Type); ok && td.URL != "" {
-		u := strings.ReplaceAll(td.URL, "{slug}", n.Slug)
-		u = strings.ReplaceAll(u, "{id}", strconv.FormatInt(n.ID, 10))
-		if !strings.Contains(u, "{") {
-			return u
-		}
-	}
 	if n.Slug != "" {
 		return "/node/" + n.Slug
 	}
