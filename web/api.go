@@ -83,7 +83,14 @@ func (s *Site) apiNodes(ctx *CmsCtx) {
 	}
 	expand := strings.TrimSpace(ctx.Query("expand"))
 
-	q := core.ListQuery{Type: typ, Filter: filter, Sort: sort, Expand: expand, Page: page, Size: size}
+	// 类型过滤由 API 层构建（{type} 路径参数 → (= type "x")）
+	f := filter
+	if f != "" {
+		f = `(and (= type "` + typ + `") ` + f + `)`
+	} else {
+		f = `(= type "` + typ + `")`
+	}
+	q := core.ListQuery{Filter: f, Sort: sort, Expand: expand, Page: page, Size: size}
 	list, total, err := s.svc.ListQWithParams(q, nil)
 	if err != nil {
 		// filter 编译错误（语法/未知字段/未知函数）— fail-loud 400

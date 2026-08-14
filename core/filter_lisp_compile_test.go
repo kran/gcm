@@ -16,7 +16,7 @@ func TestLispCompileV(t *testing.T) {
 	exec := func(lisp string, params map[string]any) []Node {
 		t.Helper()
 		q := s.db.Add(`SELECT * FROM nodes WHERE ${where}`)
-		q, err := s.CompileLispInto(q, lisp, "article", params)
+		q, err := s.CompileLispInto(q, lisp, params)
 		if err != nil {
 			t.Fatalf("compile %q: %v", lisp, err)
 		}
@@ -57,7 +57,7 @@ func TestLispListQ(t *testing.T) {
 	s.CreateNode(&Node{Type: "article", Status: StatusPublished, Sort: 2, Fields: Fields{"title": "乙", "categories": []any{root}}})
 
 	// Filter（Lisp）+ 分页
-	list, total, err := s.ListQ(ListQuery{Type: "article", Filter: `(in ->categories (subtree "root"))`, Page: 1, Size: 10})
+	list, total, err := s.ListQ(ListQuery{Filter: `(and (= type "article") (in ->categories (subtree "root")))`, Page: 1, Size: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestLispListQ(t *testing.T) {
 		t.Fatalf("ListQ: total=%d len=%d", total, len(list))
 	}
 	// Sort + 分页
-	list, _, err = s.ListQ(ListQuery{Type: "article", Filter: `(= status 1)`, Sort: "sort DESC", Page: 1, Size: 1})
+	list, _, err = s.ListQ(ListQuery{Filter: `(and (= type "article") (= status 1))`, Sort: "sort DESC", Page: 1, Size: 1})
 	if err != nil {
 		t.Fatal(err)
 	}

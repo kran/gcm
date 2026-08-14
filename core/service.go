@@ -514,9 +514,7 @@ func ToID(v any) (int64, error) {
 // 展开、分页 — 内部用 dba var 槽（${where} ${order}）组合, 不拼字符串。
 // Lisp filter 编译器（CompileLispInto）作为 ${where} 槽的挂载器。
 type ListQuery struct {
-	Type   string // 类型过滤（合成 (= type "x") 条件; 空 = 不过滤类型）
-	Host   string // 编译宿主（Lisp 字段校验依据; 空 = Type）
-	Filter string // Lisp filter 表达式（空 = 不过滤）
+	Filter string // Lisp filter 表达式（空 = 不过滤; 类型过滤由使用方构建 (= type "x")）
 	Sort   string // 排序（空 = 默认 ORDER BY sort, id DESC）
 	Expand string // 展开表达式（预留）
 	Page   int
@@ -531,26 +529,13 @@ func (s *Service) ListQWithParams(q ListQuery, params map[string]any) ([]Node, i
 	if q.Size < 1 {
 		q.Size = 20
 	}
-	// type 条件合成进 filter（列比较, 参数化）: (and (= type "xxx") <user filter>)
-	// — ListQ.Type 的语义 = 类型过滤; Host = 编译宿主（字段校验; 空 = Type）
-	whereExpr := q.Filter
-	if q.Type != "" {
-		if whereExpr != "" {
-			whereExpr = `(and (= type "` + q.Type + `") ` + whereExpr + `)`
-		} else {
-			whereExpr = `(= type "` + q.Type + `")`
-		}
-	}
-	host := q.Host
-	if host == "" {
-		host = q.Type
-	}
 	// dba.Page 协议: ${F:*}（列槽, count 时换 COUNT(1)）+ ${order:}（排序槽,
 	// count 自动清空）— count/data 同 base 不可变分叉, filter 只编译一次。
+	// 类型过滤由使用方构建（(= type "x") 或 (in type ...)）— ListQuery 不预设。
 	db := s.db.Add(`SELECT ${F:*} FROM nodes WHERE ${where} ${order:ORDER BY sort, id DESC}`)
-	if whereExpr != "" {
+	if q.Filter != "" {
 		var err error
-		db, err = s.CompileLispInto(db, whereExpr, host, params)
+		db, err = s.CompileLispInto(db, q.Filter, params)
 		if err != nil {
 			return nil, 0, err
 		}

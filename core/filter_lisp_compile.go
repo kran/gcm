@@ -25,7 +25,6 @@ import (
 	"strings"
 
 	"github.com/kran/dba"
-	"github.com/kran/gcm/types"
 )
 
 // lispCompiler 编译状态: var 链 + 编号 + 宿主/节点上下文。
@@ -33,7 +32,6 @@ type lispCompiler struct {
 	svc     *Service
 	q       *dba.SQL
 	varSeq  int
-	td      *types.TypeDef
 	nodeRef string // 列引用的表别名: "nodes" 顶层; edge 开层 = "t{i}"
 	link    string // 边查询的链接列来源: "nodes.id" 顶层; 开层 = "t{i}.id"
 	depth   int    // edge 开层层级（别名 e{i}/t{i}）
@@ -55,16 +53,16 @@ func (s *Service) RegisterLispFuncC(name string, fn LispFuncC) {
 // CompileLispInto 在 q 上挂载 ${where} var（嵌套 var 同实例 — 原样保留,
 // 不 ToSQL）。q 是调用方的 dba 链（base SQL 模板含 ${where} 槽）;
 // 返回挂好 var 的 q, 调用方继续链式操作, 最终执行时统一展开。
-func (s *Service) CompileLispInto(q *dba.SQL, expr, typeName string, params map[string]any) (*dba.SQL, error) {
+// CompileLispInto 在 q 上挂载 ${where} var（嵌套 var 同实例 — 原样保留,
+// 不 ToSQL）。不做字段校验（宽松编译 — 错误延迟到 SQL 执行 fail-loud）;
+// 类型过滤由调用方构建（(= type "x")）。q 是调用方的 dba 链（base SQL
+// 模板含 ${where} 槽）; 返回挂好 var 的 q, 调用方继续链式操作。
+func (s *Service) CompileLispInto(q *dba.SQL, expr string, params map[string]any) (*dba.SQL, error) {
 	e, err := parseLisp(expr)
 	if err != nil {
 		return nil, err
 	}
-	td, ok := s.types.Type(typeName)
-	if !ok {
-		return nil, fmt.Errorf("core: type %q not defined", typeName)
-	}
-	c := &lispCompiler{svc: s, q: q, td: &td, nodeRef: "nodes", link: "nodes.id", params: params}
+	c := &lispCompiler{svc: s, q: q, nodeRef: "nodes", link: "nodes.id", params: params}
 	if e.head == "" {
 		return nil, fmt.Errorf("filter-lisp: top-level must be a call")
 	}
@@ -135,9 +133,9 @@ func (c *lispCompiler) call(e lispExpr) (string, []any, error) {
 	if !ok {
 		return "", nil, fmt.Errorf("filter-lisp: unknown function %q", e.head)
 	}
-	origTd, origRef, origLink := c.td, c.nodeRef, c.link
+	origRef, origLink := c.nodeRef, c.link
 	frag, args, err := fn(e.args)
-	c.td, c.nodeRef, c.link = origTd, origRef, origLink
+	c.nodeRef, c.link = origRef, origLink
 	return frag, args, err
 }
 
@@ -199,16 +197,6 @@ func jsonPath(name string) string {
 	return "$." + name
 }
 
-// refTarget 出边: 宿主类型里引用字段的目标类型（->name 必须宿主声明）。
-func (c *lispCompiler) refTarget(field string) (string, error) {
-	for _, f := range c.td.Fields {
-		if f.Name == field && c.svc.types.IsRefKind(f.Kind) {
-			return f.To, nil
-		}
-	}
-	return "", fmt.Errorf("filter-lisp: %q not a ref field on %q", field, c.td.Name)
-}
-
 // ── 函数实现 ─────────────────────────────────────
 
 // cmp 比较: 列/JSON（nodeRef 相对当前节点）。引用字段直接比较 → 报错提示。
@@ -227,28 +215,18 @@ func (c *lispCompiler) cmp(op string, args []lispExpr) (string, error) {
 	kind, _, name := fieldOf(path)
 	switch kind {
 	case fieldJSON:
-		if !c.isScalar(name) {
-			return "", fmt.Errorf("filter-lisp: field %q not scalar on %q", name, c.td.Name)
+		// 严格 $name（$.name 语法拒绝）; 字段本身不校验（宽松）
+		if name == "" || strings.HasPrefix(name, ".") {
+			return "", fmt.Errorf("filter-lisp: strict $name (no dot), got %q", path)
 		}
 		return c.varRef("json_extract("+c.nodeRef+".fields, #{1}) "+sqlOp(op)+" #{2}", jsonPath(name), val), nil
 	case fieldCol:
-		if types.IsNodeColumn(name) {
-			return c.varRef(c.nodeRef+".#{1|quote} "+sqlOp(op)+" #{2}", name, val), nil
-		}
-		return "", fmt.Errorf("filter-lisp: %q is not a column of nodes", name)
+		// 列不校验（宽松 — 拼写错误延迟到 SQL 执行 fail-loud）
+		return c.varRef(c.nodeRef+".#{1|quote} "+sqlOp(op)+" #{2}", name, val), nil
 	case fieldOut, fieldIn:
 		return "", fmt.Errorf("filter-lisp: ref field %q needs edge/in, not %s", name, op)
 	}
 	return "", fmt.Errorf("filter-lisp: %q neither column nor $.field", path)
-}
-
-func (c *lispCompiler) isScalar(name string) bool {
-	for _, f := range c.td.Fields {
-		if f.Name == name {
-			return !c.svc.types.IsRefKind(f.Kind) && f.Kind != "array" && f.Kind != "object"
-		}
-	}
-	return false
 }
 
 // and/or/not: 组合子表达式（每个子表达式 var 注册, 引用拼接）。
@@ -292,33 +270,8 @@ func (c *lispCompiler) edgeFn(args []lispExpr) (string, error) {
 		return "", fmt.Errorf("filter-lisp: edge needs ref field with -> or <- prefix, got %q", path)
 	}
 	in := kind == fieldIn
-	var to string
-	if in {
-		// 入边: <-type.field — 类型显式; 校验类型存在且声明 field ref to 当前宿主
-		if refType == "" {
-			return "", fmt.Errorf("filter-lisp: in-edge needs <-type.field (source type explicit), got %q", path)
-		}
-		to = refType
-		td, ok := c.svc.types.Type(refType)
-		if !ok {
-			return "", fmt.Errorf("filter-lisp: in-edge type %q not defined", refType)
-		}
-		found := false
-		for _, f := range td.Fields {
-			if f.Name == field && c.svc.types.IsRefKind(f.Kind) && f.To == c.td.Name {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return "", fmt.Errorf("filter-lisp: %q does not declare ref %q to %q", refType, field, c.td.Name)
-		}
-	} else {
-		// 出边: ->field — 字段属于当前宿主
-		to, err = c.refTarget(field)
-		if err != nil {
-			return "", err
-		}
+	if in && refType == "" {
+		return "", fmt.Errorf("filter-lisp: in-edge needs <-type.field (source type explicit), got %q", path)
 	}
 	joinCol, linkCol := "to_node", "from_node"
 	if in {
@@ -349,18 +302,14 @@ func (c *lispCompiler) edgeFn(args []lispExpr) (string, error) {
 		return c.varRef("EXISTS(SELECT 1 FROM edges WHERE field = #{1} AND "+linkCol+" = "+c.link+" AND "+joinCol+" = #{2})", field, val), nil
 	}
 
-	// 谓词 → 开层: 宿主切换到目标类型（目标谓词在 t{i} 下编译; 入边带来源类型校验）
-	htd, ok := c.svc.types.Type(to)
-	if !ok {
-		return "", fmt.Errorf("filter-lisp: type %q not defined", to)
-	}
+	// 谓词 → 开层: 宿主别名切换到 t{i}（无类型校验 — 宽松; 入边带来源类型过滤）
 	c.depth++
 	alias := fmt.Sprintf("e%d", c.depth)
 	tAlias := fmt.Sprintf("t%d", c.depth)
-	origTd, origRef, origLink := c.td, c.nodeRef, c.link
-	c.td, c.nodeRef, c.link = &htd, tAlias, tAlias+".id"
+	origRef, origLink := c.nodeRef, c.link
+	c.nodeRef, c.link = tAlias, tAlias+".id"
 	frag, _, err := c.call(target)
-	c.td, c.nodeRef, c.link = origTd, origRef, origLink
+	c.nodeRef, c.link = origRef, origLink
 	c.depth--
 	if err != nil {
 		return "", err
@@ -386,35 +335,8 @@ func (c *lispCompiler) inFn(args []lispExpr) (string, error) {
 		return "", err
 	}
 	kind, refType, field := fieldOf(path)
-	if kind == fieldCol && !types.IsNodeColumn(field) {
-		return "", fmt.Errorf("filter-lisp: %q is not a column of nodes", field)
-	}
-	if kind == fieldJSON && !c.isScalar(field) {
-		return "", fmt.Errorf("filter-lisp: field %q not scalar on %q", field, c.td.Name)
-	}
-	if kind == fieldIn {
-		// 入边类型校验（同 edgeFn）: <-type.field
-		if refType == "" {
-			return "", fmt.Errorf("filter-lisp: in-edge needs <-type.field (source type explicit), got %q", path)
-		}
-		td, ok := c.svc.types.Type(refType)
-		if !ok {
-			return "", fmt.Errorf("filter-lisp: in-edge type %q not defined", refType)
-		}
-		found := false
-		for _, f := range td.Fields {
-			if f.Name == field && c.svc.types.IsRefKind(f.Kind) && f.To == c.td.Name {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return "", fmt.Errorf("filter-lisp: %q does not declare ref %q to %q", refType, field, c.td.Name)
-		}
-	} else if kind == fieldOut {
-		if _, err := c.refTarget(field); err != nil {
-			return "", err
-		}
+	if kind == fieldIn && refType == "" {
+		return "", fmt.Errorf("filter-lisp: in-edge needs <-type.field (source type explicit), got %q", path)
 	}
 
 	// 集合形态一: 数组字面量 [1 2 3] 或占位符绑定数组（元素解析占位符）

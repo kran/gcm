@@ -242,7 +242,9 @@ func (b *backend) listNodes(ctx *web.CmsCtx) {
 		}
 	}
 	if filter != "" {
-		lq := core.ListQuery{Type: typ, Filter: filter, Page: page, Size: size}
+		// 类型过滤由使用方构建（合成 (= type "x")）
+		f := `(and (= type "` + typ + `") ` + filter + `)`
+		lq := core.ListQuery{Filter: f, Page: page, Size: size}
 		list, total, err = b.core.ListQWithParams(lq, params)
 	} else {
 		list, total, err = b.core.List(typ, -1, page, size)
