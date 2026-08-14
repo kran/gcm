@@ -58,7 +58,7 @@ func main() {
 		log.Fatal(err)
 	}
 	// PocketBase 形态: 一个 App 装配全部（db/迁移/类型/引擎/admin/账号引导）
-	site, err := gcm.NewSite(gcm.Options{AdminPass: *adminPass}, gcm.SiteSpec[any]{
+	site, err := gcm.NewSite(gcm.SiteSpec[any]{
 		Hosts:     []string{"localhost", "127.0.0.1"},
 		DBPath:    "example.db",
 		Types:     yaml,
@@ -66,6 +66,7 @@ func main() {
 		Static:    "static",
 		Uploads:   "uploads",
 		Kinds:     []types.Kind{colorKind{}},
+		AdminPass: *adminPass,
 		Setup:     setup,
 	})
 	if err != nil {

@@ -33,12 +33,20 @@ import (
 	"github.com/kran/gcm/web/admin"
 )
 
-// SiteSpec 站点装配规格: 骨架配置 + 业务钩子。
+// SiteSpec 站点装配规格: 骨架配置 + 业务钩子（全部站点级 — 无应用级 Options）。
 // T 是站点 PageData 泛型（cho 的 CtxMaker[T] 模式 — 站点定形状, gcm 不预设字段名）。
 type SiteSpec[T any] struct {
 	Hosts  []string // 域名列表（Host 头分发键; 多站时必须非空, 单站可空）
 	DBPath string   // SQLite 库文件路径
 	Types  []byte   // types.yaml 内容（类型定义, 站点差异所在）
+	// AdminPass 管理后台固定密码（空 = 首次生成随机密码并打印）。
+	AdminPass string
+	// Debug 开发模式: 渲染失败显示错误页（模板名/行号/原因/候选/数据 keys）;
+	// 生产空值 = HTML 注释（不泄漏细节）。
+	Debug bool
+	// SQLLogger dba SQL 日志器（nil = 默认: slog.Default 慢查询 1s 阈值）—
+	// 构造用 dba.NewLogger(logger, threshold, clean) 或任意 LogFunc。
+	SQLLogger dba.LogFunc
 	// Kinds 站点自定义 kind（在 types.Load 之前注册 — 类型定义里用到
 	// 自定义 kind 才能通过校验）。完整扩展闭环: Go 值校验 + Editor 原语
 	// 声明 + 站点挂载控件组件路由（/admin/ui-extras/{widget}.vue）。
@@ -54,19 +62,6 @@ type SiteSpec[T any] struct {
 	Setup func(s *web.Site, svc *core.Service) error
 }
 
-// Options 应用级选项。
-type Options struct {
-	// AdminPass 管理后台固定密码（空 = 首次生成随机密码并打印）。
-	AdminPass string
-	// Debug 开发模式: 渲染失败显示错误页（模板名/行号/原因/候选/数据 keys）;
-	// 生产空值 = HTML 注释（不泄漏细节）。
-	Debug bool
-	// SQLLogger dba SQL 日志器（nil = 默认: slog.Default 慢查询 1s 阈值）—
-	// 站点自定义（调阈值/换 logger/关闭用 nil + 跳过 SetLogger?）— 构造
-	// 用 dba.NewLogger(logger, threshold, clean) 或任意 LogFunc。
-	SQLLogger dba.LogFunc
-}
-
 // 多站组合: HostMux 重导出（gcm 门面提供; 装配层与站点解耦 —
 // 各自 NewSite 装配, 再 mux.Add(hosts, site) 组合）。
 type HostMux = web.HostMux
@@ -75,15 +70,13 @@ type HostMux = web.HostMux
 func NewHostMux() *HostMux { return web.NewHostMux() }
 
 // builder 装配器（内部 — NewSite 的工作单元）。
-type builder[T any] struct {
-	options Options
-}
+type builder[T any] struct{}
 
 // NewSite 装配**一个**站点, 返回 *web.Site（泛型 T 只在装配期 —
 // PageDataMaker 类型; 运行时是 *web.Site, Listen/Handler 直接可用）。
 // 多站: 各自 NewSite, 再 gcm.NewHostMux() + mux.Add(hosts, site) 组合。
-func NewSite[T any](opts Options, spec SiteSpec[T]) (*web.Site, error) {
-	b := &builder[T]{options: opts}
+func NewSite[T any](spec SiteSpec[T]) (*web.Site, error) {
+	b := &builder[T]{}
 	site, err := b.build(spec)
 	if err != nil {
 		return nil, fmt.Errorf("gcm: %w", err)
@@ -117,7 +110,7 @@ func (a *builder[T]) build(spec SiteSpec[T]) (*web.Site, error) {
 		maker = func(ctx *web.CmsCtx, n *core.Node) any { return spec.PageDataMaker(svc, ctx, n) }
 	}
 	site := web.New(svc, eng)
-	site.Debug = a.options.Debug
+	site.Debug = spec.Debug
 	site.PageDataMaker = maker
 
 	// 装配序列（每项一个绑定原语, 顺序即职责）:
@@ -145,8 +138,8 @@ func (a *builder[T]) openDB(spec SiteSpec[T]) (*dba.SQL, error) {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
 	// SQL 日志: 站点自定义优先, 否则默认（慢查询 1s 阈值, slog.Default）
-	if a.options.SQLLogger != nil {
-		db = db.SetLogger(a.options.SQLLogger)
+	if spec.SQLLogger != nil {
+		db = db.SetLogger(spec.SQLLogger)
 	} else {
 		db = db.SetLogger(dba.NewLogger(slog.Default(), time.Second, false))
 	}
@@ -158,8 +151,8 @@ func (a *builder[T]) openDB(spec SiteSpec[T]) (*dba.SQL, error) {
 		return nil, fmt.Errorf("admin bootstrap: %w", err)
 	} else if dc != nil {
 		log.Printf("gcm: site (%v): admin created: %s / %s", spec.Hosts, dc.Username, dc.Password)
-		if a.options.AdminPass != "" {
-			if err := admin.NewService(db).SetPassword(a.options.AdminPass); err != nil {
+		if spec.AdminPass != "" {
+			if err := admin.NewService(db).SetPassword(spec.AdminPass); err != nil {
 				return nil, fmt.Errorf("set admin password: %w", err)
 			}
 			log.Printf("gcm: site (%v): admin password set to fixed", spec.Hosts)
