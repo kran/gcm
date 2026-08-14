@@ -162,9 +162,9 @@ func TestFilterListFunc(t *testing.T) {
 	svc.CreateNode(&core.Node{Type: "article", Slug: "a3", Status: core.StatusDraft, Fields: core.Fields{"body": "z", "authors": []any{p2}}})
 
 	os.WriteFile(filepath.Join(tplDir, "node.html"), []byte(`
-{{ $pub := filterList "article" "status = 1" nil 1 10 }}
+{{ $pub := filterList "article" "(= status 1)" nil 1 10 }}
 pub={{ range $pub }}{{ .Slug }} {{ end }}
-{{ $z := filterList "article" "status = 1 && authors ~ {:a}" (dict "a" 1) 1 10 }}
+{{ $z := filterList "article" "(and (= status 1) (edge ->authors {:a}))" (dict "a" 1) 1 10 }}
 zhang={{ range $z }}{{ .Slug }} {{ end }}
 `), 0644)
 	e := New(tplDir, svc)
@@ -179,7 +179,7 @@ zhang={{ range $z }}{{ .Slug }} {{ end }}
 	}
 	// 缓存命中: 同表达式不重复编译（内部不可见, 但保证不 panic/结果一致）
 	var sb2 strings.Builder
-	os.WriteFile(filepath.Join(tplDir, "node.html"), []byte(`{{ $z := filterList "article" "status = 1 && authors ~ {:a}" (dict "a" 1) 1 10 }}{{ range $z }}{{ .Slug }}{{ end }}`), 0644)
+	os.WriteFile(filepath.Join(tplDir, "node.html"), []byte(`{{ $z := filterList "article" "(and (= status 1) (edge ->authors {:a}))" (dict "a" 1) 1 10 }}{{ range $z }}{{ .Slug }}{{ end }}`), 0644)
 	if err := e.Render(&sb2, []string{"node.html"}, map[string]any{}); err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +194,7 @@ func TestFilterListFailLoud(t *testing.T) {
 	svc, dir := testSvc(t)
 	tplDir := filepath.Join(dir, "templates")
 	os.MkdirAll(tplDir, 0755)
-	os.WriteFile(filepath.Join(tplDir, "node.html"), []byte(`{{ $bad := filterList "article" "authors ~" nil 1 10 }}`), 0644)
+	os.WriteFile(filepath.Join(tplDir, "node.html"), []byte(`{{ $bad := filterList "article" "(bogus-fn)" nil 1 10 }}`), 0644)
 	e := New(tplDir, svc)
 	var sb strings.Builder
 	err := e.Render(&sb, []string{"node.html"}, map[string]any{})
