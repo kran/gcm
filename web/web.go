@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/kran/gcm/core/hook"
 	"html"
 	"log/slog"
 	"net/http"
@@ -22,7 +23,6 @@ import (
 	"github.com/kran/cho"
 	"github.com/kran/dba"
 	"github.com/kran/gcm/core"
-	"github.com/kran/gcm/core/hook"
 	"github.com/kran/gcm/core/render"
 )
 
@@ -51,8 +51,8 @@ type CmsCtx struct {
 	site *Site
 }
 
-// Svc 核心服务（自定义路由查数据）。
-func (c *CmsCtx) Svc() *core.Service { return c.site.svc }
+// Service 核心服务（自定义路由查数据）。
+func (c *CmsCtx) Service() *core.Service { return c.site.svc }
 
 // Engine 渲染引擎（注册模板函数用）。
 func (c *CmsCtx) Engine() *render.Engine { return c.site.eng }
@@ -97,7 +97,10 @@ type Site struct {
 	PageDataMaker PageDataMaker
 }
 
-// DB 暴露本站 db（站点项目/admin 用: 首次引导账号、业务表）。
+// Service 核心服务（站点代码查询入口: Q/图原语/Search; Setup 之外也可取）。
+func (s *Site) Service() *core.Service { return s.svc }
+
+// DB 暴露本站 db（站点项目/admin 用: 首次引导账号、业务表、逃生舱）。
 func (s *Site) DB() *dba.SQL { return s.db }
 
 // Func 注册站点自定义模板函数（转发到渲染引擎; 站点业务查询在此组装）。
@@ -116,11 +119,12 @@ func New(svc *core.Service, eng *render.Engine, static string, maker PageDataMak
 		return &CmsCtx{BaseContext: cho.MakeBaseContext(w, r), site: s}
 	})
 	// 声明渲染事件（注册即校验签名; 站点 AddHook 前必须存在）
-	if err := svc.Hooks().Define(
+	err := svc.Hooks().Define(
 		hook.Spec{Name: HookRender, Proto: func(*CmsCtx, map[string]any) error { return nil }},
 		hook.Spec{Name: HookNodeRender, Proto: func(*CmsCtx, *core.Node, map[string]any) error { return nil }},
 		hook.Spec{Name: HookNodeEnrich, Proto: func(*CmsCtx, *core.Node) error { return nil }},
-	); err != nil {
+	)
+	if err != nil {
 		panic("web: define render hooks: " + err.Error())
 	}
 	s.mount()

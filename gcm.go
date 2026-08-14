@@ -123,6 +123,8 @@ func (a *App[T]) build(spec SiteSpec[T]) (*web.Site, error) {
 	}
 	site := web.New(svc, eng, spec.Static, maker)
 	site.Debug = a.options.Debug
+	// 上传目录是站点级配置: 前台 /uploads/* 服务在此挂（不依赖 admin 是否启用）
+	site.MountUploads(spec.Uploads)
 	admin.Mount(site, svc, ts, spec.Uploads)
 	if spec.Setup != nil {
 		if err := spec.Setup(site, svc); err != nil {
