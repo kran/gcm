@@ -392,7 +392,7 @@ func (c *lispCompiler) subtreeFn(args []lispExpr) (string, error) {
 		return "", fmt.Errorf("filter-lisp: subtree takes 1 arg")
 	}
 	slug, _ := pathOfC(args[0])
-	cat, err := c.svc.GetBySlug(slug)
+	cat, err := c.svc.GetNodeBySlug(slug)
 	if err != nil || cat == nil {
 		return "", fmt.Errorf("filter-lisp: subtree %q not found", slug)
 	}

@@ -24,9 +24,9 @@ func newTraverseService(t *testing.T) *Service {
 // 造树: root → a → b（b.parent=a, a.parent=root）
 func buildTree(t *testing.T, s *Service) (root, a, b int64) {
 	t.Helper()
-	root, _ = s.Create(&Node{Type: "category", Fields: Fields{"name": "root"}})
-	a, _ = s.Create(&Node{Type: "category", Fields: Fields{"name": "a", "parent": root}})
-	b, _ = s.Create(&Node{Type: "category", Fields: Fields{"name": "b", "parent": a}})
+	root, _ = s.CreateNode(&Node{Type: "category", Fields: Fields{"name": "root"}})
+	a, _ = s.CreateNode(&Node{Type: "category", Fields: Fields{"name": "a", "parent": root}})
+	b, _ = s.CreateNode(&Node{Type: "category", Fields: Fields{"name": "b", "parent": a}})
 	return
 }
 
@@ -96,12 +96,12 @@ func TestTraverseMaxHops(t *testing.T) {
 func TestEquivalenceClass(t *testing.T) {
 	s := newTraverseService(t)
 	// 等价类: x ↔ y ↔ z（只存单向边 x→y, y→z — 等价无方向, 类内全可达）
-	x, _ := s.Create(&Node{Type: "category", Fields: Fields{"name": "x"}})
-	y, _ := s.Create(&Node{Type: "category", Fields: Fields{"name": "y"}})
-	z, _ := s.Create(&Node{Type: "category", Fields: Fields{"name": "z"}})
-	alone, _ := s.Create(&Node{Type: "category", Fields: Fields{"name": "alone"}})
-	s.AddRef(x, y, "synonym", 0)
-	s.AddRef(y, z, "synonym", 0)
+	x, _ := s.CreateNode(&Node{Type: "category", Fields: Fields{"name": "x"}})
+	y, _ := s.CreateNode(&Node{Type: "category", Fields: Fields{"name": "y"}})
+	z, _ := s.CreateNode(&Node{Type: "category", Fields: Fields{"name": "z"}})
+	alone, _ := s.CreateNode(&Node{Type: "category", Fields: Fields{"name": "alone"}})
+	s.AddEdge(x, y, "synonym", 0)
+	s.AddEdge(y, z, "synonym", 0)
 
 	got, err := s.EquivalenceClass(y, "synonym", 10)
 	if err != nil {
@@ -121,10 +121,10 @@ func TestEquivalenceClass(t *testing.T) {
 // 环防: 循环引用不无限递归, maxHops 截断。
 func TestTraverseCycle(t *testing.T) {
 	s := newTraverseService(t)
-	a, _ := s.Create(&Node{Type: "category", Fields: Fields{"name": "a"}})
-	b, _ := s.Create(&Node{Type: "category", Fields: Fields{"name": "b"}})
-	s.AddRef(a, b, "parent", 0)
-	s.AddRef(b, a, "parent", 0) // 环
+	a, _ := s.CreateNode(&Node{Type: "category", Fields: Fields{"name": "a"}})
+	b, _ := s.CreateNode(&Node{Type: "category", Fields: Fields{"name": "b"}})
+	s.AddEdge(a, b, "parent", 0)
+	s.AddEdge(b, a, "parent", 0) // 环
 
 	got, err := s.Traverse(a, "parent", 5)
 	if err != nil {

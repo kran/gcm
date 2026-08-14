@@ -99,7 +99,7 @@ func (e *Engine) queryFuncs() template.FuncMap {
 		"get": func(id any) *core.Node {
 			nid, err := core.ToID(id)
 			fail(err)
-			n, err := svc.Get(nid)
+			n, err := svc.GetNodeById(nid)
 			fail(err)
 			return n
 		},
@@ -128,13 +128,13 @@ func (e *Engine) queryFuncs() template.FuncMap {
 		// outRefs: 出边目标节点列表（symmetric 双向）
 		"outRefs": func(from int64, field string, page, size int) []core.Node {
 			return e.targets(true, func() ([]core.Edge, int64, error) {
-				return svc.OutRefs(from, field, page, size)
+				return svc.OutEdges(from, field, page, size)
 			})
 		},
 		// inRefs: 入边来源节点列表（inverse 反向 — 取 from_node 端）
 		"inRefs": func(to int64, field string, page, size int) []core.Node {
 			return e.targets(false, func() ([]core.Edge, int64, error) {
-				return svc.InRefs(to, field, page, size)
+				return svc.InEdges(to, field, page, size)
 			})
 		},
 		// traverse: 出边递归（祖先链）
@@ -253,7 +253,7 @@ func (e *Engine) targets(wantTo bool, q func() ([]core.Edge, int64, error)) []co
 		if wantTo {
 			id = ed.ToNode
 		}
-		n, err := e.core.Get(id)
+		n, err := e.core.GetNodeById(id)
 		fail(err)
 		if n != nil {
 			nodes = append(nodes, *n)

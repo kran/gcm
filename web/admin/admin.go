@@ -301,7 +301,7 @@ func (b *backend) createNode(ctx *web.CmsCtx) {
 		b.bad(ctx, err)
 		return
 	}
-	id, err := b.core.Create(&core.Node{
+	id, err := b.core.CreateNode(&core.Node{
 		Type: typ, Slug: in.Slug, Status: in.Status, Sort: in.Sort, Fields: in.Fields,
 	})
 	if err != nil {
@@ -317,7 +317,7 @@ func (b *backend) getNode(ctx *web.CmsCtx) {
 		ctx.Error(http.StatusBadRequest, "invalid id")
 		return
 	}
-	n, err := b.core.Get(id)
+	n, err := b.core.GetNodeById(id)
 	if err != nil {
 		b.internal(ctx, err)
 		return
@@ -342,7 +342,7 @@ func (b *backend) updateNode(ctx *web.CmsCtx) {
 		ctx.Error(http.StatusBadRequest, "invalid id")
 		return
 	}
-	existing, err := b.core.Get(id)
+	existing, err := b.core.GetNodeById(id)
 	if err != nil {
 		b.internal(ctx, err)
 		return
@@ -367,7 +367,7 @@ func (b *backend) updateNode(ctx *web.CmsCtx) {
 		ID: id, Type: existing.Type, Slug: in.Slug,
 		Status: in.Status, Sort: in.Sort, Fields: in.Fields,
 	}
-	if err := b.core.Update(n); err != nil {
+	if err := b.core.UpdateNode(n); err != nil {
 		b.bad(ctx, err)
 		return
 	}
@@ -380,7 +380,7 @@ func (b *backend) deleteNode(ctx *web.CmsCtx) {
 		ctx.Error(http.StatusBadRequest, "invalid id")
 		return
 	}
-	if err := b.core.Delete(id); err != nil {
+	if err := b.core.DeleteNode(id); err != nil {
 		ctx.Error(http.StatusNotFound, err.Error())
 		return
 	}
@@ -446,7 +446,7 @@ func (b *backend) expand(ctx *web.CmsCtx) {
 	}
 	if expr == "" || expr == "*" {
 		// 自动 / "*": 该类型所有 ref 字段（出边, 逗号并行, 一层）
-		n, err := b.core.Get(nodeID)
+		n, err := b.core.GetNodeById(nodeID)
 		if err != nil {
 			b.internal(ctx, err)
 			return

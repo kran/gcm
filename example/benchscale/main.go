@@ -53,7 +53,7 @@ var scales = []scale{
 
 func main() {
 	fmt.Printf("%-8s %-10s %-9s %-9s %-9s %-9s %-9s %-9s\n",
-		"规模", "文件", "Get", "List", "OutRefs", "InRefs", "Subtree", "组合")
+		"规模", "文件", "GetNodeById", "List", "OutEdges", "InEdges", "Subtree", "组合")
 	for _, sc := range scales {
 		runScale(sc)
 	}
@@ -86,10 +86,10 @@ func runScale(sc scale) {
 	articleID := int64(sc.nodes*4/5 + 100)
 	personID := int64(sc.nodes/10 + 50)
 
-	bench("Get", func() { svc.Get(articleID) })
+	bench("GetNodeById", func() { svc.GetNodeById(articleID) })
 	bench("List", func() { svc.List("article", core.StatusPublished, 1, 20) })
-	bench("OutRefs", func() { svc.OutRefs(articleID, "authors", 1, 20) })
-	bench("InRefs", func() { svc.InRefs(personID, "authors", 1, 20) })
+	bench("OutEdges", func() { svc.OutEdges(articleID, "authors", 1, 20) })
+	bench("InEdges", func() { svc.InEdges(personID, "authors", 1, 20) })
 	bench("Subtree", func() { svc.Subtree(1, "parent", 20) })
 	bench("Combo", func() { combo(svc) })
 	fmt.Println()

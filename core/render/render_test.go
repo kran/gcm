@@ -71,9 +71,9 @@ func TestInjectedFuncs(t *testing.T) {
 	os.MkdirAll(tplDir, 0755)
 
 	// 数据: 专家 + 文章 + 分类树
-	p1, _ := svc.Create(&core.Node{Type: "person", Fields: core.Fields{"name": "张三"}})
-	p2, _ := svc.Create(&core.Node{Type: "person", Fields: core.Fields{"name": "李四"}})
-	artID, _ := svc.Create(&core.Node{Type: "article", Slug: "hello",
+	p1, _ := svc.CreateNode(&core.Node{Type: "person", Fields: core.Fields{"name": "张三"}})
+	p2, _ := svc.CreateNode(&core.Node{Type: "person", Fields: core.Fields{"name": "李四"}})
+	artID, _ := svc.CreateNode(&core.Node{Type: "article", Slug: "hello",
 		Fields: core.Fields{"body": "<p>hi</p>", "authors": []any{p1, p2}}})
 
 	// 模板: 节点 + outRefs + inRefs + 工具函数
@@ -125,10 +125,10 @@ func TestExpandFunc(t *testing.T) {
 	tplDir := filepath.Join(dir, "templates")
 	os.MkdirAll(tplDir, 0755)
 	// 数据: 2 文章各 1 作者
-	p1, _ := svc.Create(&core.Node{Type: "person", Fields: core.Fields{"name": "张三"}})
-	p2, _ := svc.Create(&core.Node{Type: "person", Fields: core.Fields{"name": "李四"}})
-	a1, _ := svc.Create(&core.Node{Type: "article", Slug: "a1", Status: core.StatusPublished, Fields: core.Fields{"body": "x", "authors": []any{p1}}})
-	a2, _ := svc.Create(&core.Node{Type: "article", Slug: "a2", Status: core.StatusPublished, Fields: core.Fields{"body": "y", "authors": []any{p2}}})
+	p1, _ := svc.CreateNode(&core.Node{Type: "person", Fields: core.Fields{"name": "张三"}})
+	p2, _ := svc.CreateNode(&core.Node{Type: "person", Fields: core.Fields{"name": "李四"}})
+	a1, _ := svc.CreateNode(&core.Node{Type: "article", Slug: "a1", Status: core.StatusPublished, Fields: core.Fields{"body": "x", "authors": []any{p1}}})
+	a2, _ := svc.CreateNode(&core.Node{Type: "article", Slug: "a2", Status: core.StatusPublished, Fields: core.Fields{"body": "y", "authors": []any{p2}}})
 
 	os.WriteFile(filepath.Join(tplDir, "node.html"), []byte(`
 {{ $arts := list "article" 1 1 10 }}
@@ -155,11 +155,11 @@ func TestFilterListFunc(t *testing.T) {
 	tplDir := filepath.Join(dir, "templates")
 	os.MkdirAll(tplDir, 0755)
 	// 数据: 3 文章（2 已发布, 1 草稿）; 张三发布 2 篇
-	p1, _ := svc.Create(&core.Node{Type: "person", Fields: core.Fields{"name": "张三"}})
-	p2, _ := svc.Create(&core.Node{Type: "person", Fields: core.Fields{"name": "李四"}})
-	svc.Create(&core.Node{Type: "article", Slug: "a1", Status: core.StatusPublished, Fields: core.Fields{"body": "x", "authors": []any{p1}}})
-	svc.Create(&core.Node{Type: "article", Slug: "a2", Status: core.StatusPublished, Fields: core.Fields{"body": "y", "authors": []any{p2}}})
-	svc.Create(&core.Node{Type: "article", Slug: "a3", Status: core.StatusDraft, Fields: core.Fields{"body": "z", "authors": []any{p2}}})
+	p1, _ := svc.CreateNode(&core.Node{Type: "person", Fields: core.Fields{"name": "张三"}})
+	p2, _ := svc.CreateNode(&core.Node{Type: "person", Fields: core.Fields{"name": "李四"}})
+	svc.CreateNode(&core.Node{Type: "article", Slug: "a1", Status: core.StatusPublished, Fields: core.Fields{"body": "x", "authors": []any{p1}}})
+	svc.CreateNode(&core.Node{Type: "article", Slug: "a2", Status: core.StatusPublished, Fields: core.Fields{"body": "y", "authors": []any{p2}}})
+	svc.CreateNode(&core.Node{Type: "article", Slug: "a3", Status: core.StatusDraft, Fields: core.Fields{"body": "z", "authors": []any{p2}}})
 
 	os.WriteFile(filepath.Join(tplDir, "node.html"), []byte(`
 {{ $pub := filterList "article" "status = 1" nil 1 10 }}

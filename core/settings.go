@@ -39,7 +39,7 @@ func checkKey(key string) error {
 	return nil
 }
 
-// Get 取一条; 未找到返回 (nil, nil)。
+// GetNodeById 取一条; 未找到返回 (nil, nil)。
 func (s *Service) GetSetting(key string) (*Setting, error) {
 	var st Setting
 	found, err := s.db.Add(`SELECT * FROM settings WHERE key = #{1}`, key).Get(&st)
@@ -129,7 +129,7 @@ func (s *Service) SetSetting(key, group, typ string, value any) error {
 	return nil
 }
 
-// Delete 删除一条; 不存在报错。
+// DeleteNode 删除一条; 不存在报错。
 func (s *Service) DeleteSetting(key string) error {
 	affected, err := s.db.Add(`DELETE FROM settings WHERE key = #{1}`, key).Exec()
 	if err != nil {

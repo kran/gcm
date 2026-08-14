@@ -74,7 +74,7 @@ func get(t *testing.T, s *Site, path string) *httptest.ResponseRecorder {
 
 func TestNodeRoute(t *testing.T) {
 	s, svc := newSite(t)
-	aid, _ := svc.Create(&core.Node{Type: "article", Slug: "hello",
+	aid, _ := svc.CreateNode(&core.Node{Type: "article", Slug: "hello",
 		Status: core.StatusPublished, Fields: core.Fields{"body": "<p>hi</p>"}})
 
 	// 按 id
@@ -91,7 +91,7 @@ func TestNodeRoute(t *testing.T) {
 		t.Fatalf("by slug: %d", rec.Code)
 	}
 	// 草稿 → 404
-	draftID, _ := svc.Create(&core.Node{Type: "article", Slug: "draft",
+	draftID, _ := svc.CreateNode(&core.Node{Type: "article", Slug: "draft",
 		Status: core.StatusDraft, Fields: core.Fields{"body": "x"}})
 	_ = draftID
 	rec = get(t, s, "/node/draft")
@@ -105,7 +105,7 @@ func TestNodeRoute(t *testing.T) {
 	}
 	// 渲染错误 → HTML 注释（不 500, 细节只进注释/日志）
 	// person 走 node--person.html（故意写错查询）
-	pid, _ := svc.Create(&core.Node{Type: "person", Slug: "li",
+	pid, _ := svc.CreateNode(&core.Node{Type: "person", Slug: "li",
 		Status: core.StatusPublished, Fields: core.Fields{"name": "张三"}})
 	rec = get(t, s, "/node/"+fmtInt(pid))
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "<!-- render error:") {
@@ -136,11 +136,11 @@ func TestDebugRenderError(t *testing.T) {
 	s, svc := newSite(t)
 	s.Debug = true
 	// article 节点渲染走 node.html — 模板引用不存在的函数 → 渲染失败
-	svc.Create(&core.Node{Type: "article", Status: core.StatusPublished, Fields: core.Fields{"body": "x"}})
+	svc.CreateNode(&core.Node{Type: "article", Status: core.StatusPublished, Fields: core.Fields{"body": "x"}})
 	// 覆盖 node.html 为错误模板
 	dir := svc.DB() // 用 svc 内部无法拿目录 — 直接用 newSite 的模板覆盖不现实; 改走另一路: person 模板
 	// person 模板引用 outRefs ghost（渲染失败）— 断言 Debug 时 500 页面
-	p1, _ := svc.Create(&core.Node{Type: "person", Status: core.StatusPublished, Fields: core.Fields{"name": "x"}})
+	p1, _ := svc.CreateNode(&core.Node{Type: "person", Status: core.StatusPublished, Fields: core.Fields{"name": "x"}})
 	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/node/%d", p1), nil)
 	rec := httptest.NewRecorder()
 	s.ServeHTTP(rec, req)
@@ -168,17 +168,17 @@ func TestDebugRenderError(t *testing.T) {
 func TestNodeEnrichURL(t *testing.T) {
 	s, svc := newSite(t)
 	// smokeTypes 的 article 声明 url: /article/{slug} → 按模式替换
-	a, _ := svc.Create(&core.Node{Type: "article", Slug: "hello", Status: core.StatusPublished,
+	a, _ := svc.CreateNode(&core.Node{Type: "article", Slug: "hello", Status: core.StatusPublished,
 		Fields: core.Fields{"body": "x"}})
-	n, _ := svc.Get(a)
+	n, _ := svc.GetNodeById(a)
 	if s.nodeURL(n) != "/article/hello" {
 		t.Fatalf("pattern url: %s", s.nodeURL(n))
 	}
 	// 无 slug → {slug} 替换为空? 看 nodeURL 逻辑: 替换后不含 { → 返回; slug 空则 /node/{id}
 	// person 类型无 URL 声明 → /node/{slug}
-	p, _ := svc.Create(&core.Node{Type: "person", Slug: "p1", Status: core.StatusPublished,
+	p, _ := svc.CreateNode(&core.Node{Type: "person", Slug: "p1", Status: core.StatusPublished,
 		Fields: core.Fields{"name": "x"}})
-	pn, _ := svc.Get(p)
+	pn, _ := svc.GetNodeById(p)
 	if s.nodeURL(pn) != "/node/p1" {
 		t.Fatalf("no pattern url: %s", s.nodeURL(pn))
 	}

@@ -239,9 +239,9 @@ func (s *Site) nodeHandler() func(ctx *CmsCtx) {
 		var n *core.Node
 		var err error
 		if id, e := strconv.ParseInt(raw, 10, 64); e == nil {
-			n, err = s.svc.Get(id)
+			n, err = s.svc.GetNodeById(id)
 		} else {
-			n, err = s.svc.GetBySlug(raw)
+			n, err = s.svc.GetNodeBySlug(raw)
 		}
 		if err != nil {
 			slog.Error("node lookup failed", "path", raw, "err", err)

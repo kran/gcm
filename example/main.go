@@ -110,7 +110,7 @@ func setup(site *web.Site, svc *core.Service) error {
 		if n.Type == "category" {
 			catID = n.ID
 		} else {
-			cats, _, err := svc.OutRefs(n.ID, "categories", 1, 5)
+			cats, _, err := svc.OutEdges(n.ID, "categories", 1, 5)
 			if err != nil || len(cats) == 0 {
 				return nil
 			}
@@ -180,7 +180,7 @@ func setup(site *web.Site, svc *core.Service) error {
 
 	// 分类页: /category/{slug} → 子树内容列表
 	site.Get("/category/{slug}", func(ctx *web.CmsCtx) {
-		cat, err := svc.GetBySlug(ctx.PathValue("slug"))
+		cat, err := svc.GetNodeBySlug(ctx.PathValue("slug"))
 		if err != nil || cat == nil {
 			ctx.String(http.StatusNotFound, "404 page not found")
 			return
@@ -202,23 +202,23 @@ func setup(site *web.Site, svc *core.Service) error {
 
 func seed(svc *core.Service) error {
 	// 分类树: 动态 > 时事资讯/智库活动; 研究 > 产业/区域
-	news, err := svc.Create(&core.Node{Type: "category", Slug: "news",
+	news, err := svc.CreateNode(&core.Node{Type: "category", Slug: "news",
 		Status: core.StatusPublished, Sort: 1, Fields: core.Fields{"name": "动态"}})
 	if err != nil {
 		return err
 	}
-	current, err := svc.Create(&core.Node{Type: "category", Slug: "current",
+	current, err := svc.CreateNode(&core.Node{Type: "category", Slug: "current",
 		Status: core.StatusPublished, Sort: 1,
 		Fields: core.Fields{"name": "时事资讯", "parent": news}})
 	if err != nil {
 		return err
 	}
-	research, err := svc.Create(&core.Node{Type: "category", Slug: "research",
+	research, err := svc.CreateNode(&core.Node{Type: "category", Slug: "research",
 		Status: core.StatusPublished, Sort: 2, Fields: core.Fields{"name": "研究"}})
 	if err != nil {
 		return err
 	}
-	industry, err := svc.Create(&core.Node{Type: "category", Slug: "industry",
+	industry, err := svc.CreateNode(&core.Node{Type: "category", Slug: "industry",
 		Status: core.StatusPublished, Sort: 1,
 		Fields: core.Fields{"name": "产业研究", "parent": research}})
 	if err != nil {
@@ -226,13 +226,13 @@ func seed(svc *core.Service) error {
 	}
 
 	// 专家
-	li, err := svc.Create(&core.Node{Type: "person", Slug: "li-zhiqi",
+	li, err := svc.CreateNode(&core.Node{Type: "person", Slug: "li-zhiqi",
 		Status: core.StatusPublished,
 		Fields: core.Fields{"name": "李志起", "bio": "振兴国际智库理事长，长期跟踪研究高潜力企业群体。"}})
 	if err != nil {
 		return err
 	}
-	wang, err := svc.Create(&core.Node{Type: "person", Slug: "wang-x",
+	wang, err := svc.CreateNode(&core.Node{Type: "person", Slug: "wang-x",
 		Status: core.StatusPublished,
 		Fields: core.Fields{"name": "王晓", "bio": "产业经济研究员，专注区域与产业规划。"}})
 	if err != nil {
@@ -240,22 +240,22 @@ func seed(svc *core.Service) error {
 	}
 
 	// 机构 + 任职（关系节点）
-	viicn, err := svc.Create(&core.Node{Type: "org",
+	viicn, err := svc.CreateNode(&core.Node{Type: "org",
 		Fields: core.Fields{"name": "振兴国际智库"}})
 	if err != nil {
 		return err
 	}
-	univ, err := svc.Create(&core.Node{Type: "org",
+	univ, err := svc.CreateNode(&core.Node{Type: "org",
 		Fields: core.Fields{"name": "某大学商学院"}})
 	if err != nil {
 		return err
 	}
 	// 任职: 李志起 → 智库理事长 / 大学客座
-	if _, err := svc.Create(&core.Node{Type: "employment",
+	if _, err := svc.CreateNode(&core.Node{Type: "employment",
 		Fields: core.Fields{"person": li, "org": viicn, "role": "理事长", "tenure": "2018-至今"}}); err != nil {
 		return err
 	}
-	if _, err := svc.Create(&core.Node{Type: "employment",
+	if _, err := svc.CreateNode(&core.Node{Type: "employment",
 		Fields: core.Fields{"person": li, "org": univ, "role": "客座教授", "tenure": "2020-2024"}}); err != nil {
 		return err
 	}
@@ -271,7 +271,7 @@ func seed(svc *core.Service) error {
 		{"policy-2026", "2026 年经济政策解读", "<p>宏观政策的新取向与新抓手…</p>", []any{li}, []any{current}},
 	}
 	for i, a := range articles {
-		if _, err := svc.Create(&core.Node{Type: "article", Slug: a.slug,
+		if _, err := svc.CreateNode(&core.Node{Type: "article", Slug: a.slug,
 			Status: core.StatusPublished, Sort: i + 1,
 			Fields: core.Fields{"title": a.title, "body": a.body, "authors": a.authors, "categories": a.cats}}); err != nil {
 			return err

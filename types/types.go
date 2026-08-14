@@ -35,7 +35,7 @@ func (t TypeDef) TemplateCandidates() []string {
 
 // FieldDef 字段定义。代数声明在字段顶层:
 // symmetric / transitive / equivalence。
-// 边本身双向（OutRefs/InRefs 引擎原语）— 无需 reverse/inverse 声明。
+// 边本身双向（OutEdges/InEdges 引擎原语）— 无需 reverse/inverse 声明。
 type FieldDef struct {
 	Name  string `yaml:"name" json:"name"`
 	Label string `yaml:"label" json:"label"` // 显示名（表单/列表）; 空 = 回退字段名

@@ -6,7 +6,7 @@
 //	cmx nodes.category_id → gcm edges(field=categories, from=node, to=分类)
 //
 // 类型定义驱动: 未知字段过滤（cmx 校验松散, gcm 严格）; title 列只在类型
-// 声明 title 字段时写回（投影自动处理）; FTS 索引由 Create 自动同步。
+// 声明 title 字段时写回（投影自动处理）; FTS 索引由 CreateNode 自动同步。
 package migrate
 
 import (
@@ -114,7 +114,7 @@ func (m *migrator) run(src *sql.DB) (*Stats, error) {
 	for _, c := range cats {
 		ff := m.filterFields(m.opts.CategoryType, parseFields(c.fields))
 		ff["name"] = c.name
-		id, err := m.svc.Create(&core.Node{Type: m.opts.CategoryType, Slug: c.slug,
+		id, err := m.svc.CreateNode(&core.Node{Type: m.opts.CategoryType, Slug: c.slug,
 			Status: c.status, Sort: c.sort, CreatedAt: parseTime(c.created), Fields: ff})
 		if err != nil {
 			return nil, fmt.Errorf("migrate: category %s: %w", c.name, err)
@@ -125,7 +125,7 @@ func (m *migrator) run(src *sql.DB) (*Stats, error) {
 	for _, c := range cats {
 		if c.hasParent {
 			if pid, ok := catID[c.parent]; ok {
-				if _, err := m.svc.AddRef(catID[c.id], pid, m.opts.ParentField, c.sort); err != nil {
+				if _, err := m.svc.AddEdge(catID[c.id], pid, m.opts.ParentField, c.sort); err != nil {
 					return nil, fmt.Errorf("migrate: category parent %d: %w", c.id, err)
 				}
 				st.Edges++
@@ -151,7 +151,7 @@ func (m *migrator) run(src *sql.DB) (*Stats, error) {
 		if title.String != "" && m.hasField(typ.String, "title") {
 			ff["title"] = title.String
 		}
-		newID, err := m.svc.Create(&core.Node{Type: typ.String, Slug: slug.String,
+		newID, err := m.svc.CreateNode(&core.Node{Type: typ.String, Slug: slug.String,
 			Status: status, Sort: sort, CreatedAt: parseTime(created.String),
 			UpdatedAt: parseTime(updated.String), Fields: ff})
 		if err != nil {
@@ -159,7 +159,7 @@ func (m *migrator) run(src *sql.DB) (*Stats, error) {
 		}
 		if catIDn.Valid && catIDn.Int64 > 0 {
 			if gid, ok := catID[catIDn.Int64]; ok {
-				if _, err := m.svc.AddRef(newID, gid, m.opts.CategoryField, 0); err != nil {
+				if _, err := m.svc.AddEdge(newID, gid, m.opts.CategoryField, 0); err != nil {
 					return nil, fmt.Errorf("migrate: node category %d: %w", id, err)
 				}
 				st.Edges++

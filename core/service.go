@@ -26,8 +26,8 @@ const (
 // 节点 CRUD 与引用落边是一个事务（ref 字段值进 edges, fields 只存标量）。
 // 标准 hook 事件（扩展挂载点; 通用组件不依赖业务语义）:
 //
-//	HookNodeSave  func(*Node) error   — Create/Update 事务内（失败回滚）
-//	HookNodeDelete func(int64) error  — Delete 事务内
+//	HookNodeSave  func(*Node) error   — CreateNode/UpdateNode 事务内（失败回滚）
+//	HookNodeDelete func(int64) error  — DeleteNode 事务内
 //
 // 扩展: svc.Hooks().AddHook(core.HookNodeSave, fn, priority)
 const (
@@ -74,10 +74,10 @@ func (s *Service) DB() *dba.SQL { return s.db }
 
 // ── 写 ─────────────────────────────────────────
 
-// Create 建节点: 校验字段 → 抽取 ref 字段值落 edges → 存节点。
+// CreateNode 建节点: 校验字段 → 抽取 ref 字段值落 edges → 存节点。
 // fields 中的 ref 字段值是 id（ref）或 id 数组（ref[]）;
 // 落库后 fields 只含标量字段。
-func (s *Service) Create(n *Node) (int64, error) {
+func (s *Service) CreateNode(n *Node) (int64, error) {
 	if n == nil {
 		return 0, errors.New("core: create: nil node")
 	}
@@ -107,7 +107,7 @@ func (s *Service) Create(n *Node) (int64, error) {
 		if err != nil {
 			return err
 		}
-		if err := s.addRefs(tx, id, td, refs); err != nil {
+		if err := s.addEdges(tx, id, td, refs); err != nil {
 			return err
 		}
 		// 搜索同步 + 扩展钩子（事务内, 失败回滚 = fail-loud）
@@ -120,17 +120,17 @@ func (s *Service) Create(n *Node) (int64, error) {
 	return id, nil
 }
 
-// Update 全量更新（无差量语义）: 校验 → 事务（替换该类型全部 ref 字段的
+// UpdateNode 全量更新（无差量语义）: 校验 → 事务（替换该类型全部 ref 字段的
 // 边 + 更新节点列）。
 // ⚠ 调用约定: n 是**完整状态** — 从零构造 Node 只改部分字段会清空
-// 未赋值的 Slug/Status/Sort。安全模式: Get(id) → 改字段 → Update。
+// 未赋值的 Slug/Status/Sort。安全模式: GetNodeById(id) → 改字段 → UpdateNode。
 // n.Type 不可变（防改类型破坏引用语义）。n 会被就地修改（Fields 剥掉
 // ref 字段, UpdatedAt 刷新）。
-func (s *Service) Update(n *Node) error {
+func (s *Service) UpdateNode(n *Node) error {
 	if n == nil {
 		return errors.New("core: update: nil node")
 	}
-	existing, err := s.Get(n.ID)
+	existing, err := s.GetNodeById(n.ID)
 	if err != nil {
 		return err
 	}
@@ -173,7 +173,7 @@ func (s *Service) Update(n *Node) error {
 		if _, err := dao.Update(&m, "id = #{1}", n.ID); err != nil {
 			return err
 		}
-		if err := s.addRefs(tx, n.ID, td, refs); err != nil {
+		if err := s.addEdges(tx, n.ID, td, refs); err != nil {
 			return err
 		}
 		m.ID = n.ID
@@ -182,8 +182,8 @@ func (s *Service) Update(n *Node) error {
 	})
 }
 
-// Delete 删节点: 显式清全部出/入引用 + 删节点（事务, 不依赖 PRAGMA FK）。
-func (s *Service) Delete(id int64) error {
+// DeleteNode 删节点: 显式清全部出/入引用 + 删节点（事务, 不依赖 PRAGMA FK）。
+func (s *Service) DeleteNode(id int64) error {
 	return s.db.Transaction(func(tx *dba.SQL) error {
 		if _, err := tx.Add(
 			`DELETE FROM edges WHERE from_node = #{1} OR to_node = #{1}`, id).Exec(); err != nil {
@@ -238,9 +238,9 @@ func (s *Service) ListAny(where string, args []any, page, size int) ([]Node, int
 	return list, total, nil
 }
 
-// Get 按 id 取节点; 不存在返回 (nil, nil) — 查询语义（"找不到"不是错误,
+// GetNodeById 按 id 取节点; 不存在返回 (nil, nil) — 查询语义（"找不到"不是错误,
 // 模板层 get 返回 nil 渲染空）。管理 API 需区分时用 FullFields（ErrNotFound）。
-func (s *Service) Get(id int64) (*Node, error) {
+func (s *Service) GetNodeById(id int64) (*Node, error) {
 	return s.dao.GetByID(id)
 }
 
@@ -248,7 +248,7 @@ func (s *Service) Get(id int64) (*Node, error) {
 // 存储的 fields 不含 ref（引用在 edges）; 此方法把它们组装回来。
 // 模板层不用（模板用 outRefs/inRefs 取引用, 保持投影纪律）。
 func (s *Service) FullFields(id int64) (Fields, error) {
-	n, err := s.Get(id)
+	n, err := s.GetNodeById(id)
 	if err != nil {
 		return nil, err
 	}
@@ -292,7 +292,7 @@ func (s *Service) FullFields(id int64) (Fields, error) {
 }
 
 // refTargetIDs 某节点某引用字段的全部目标 id（管理回显; 一条 SQL 全量,
-// 无分页上限 — 修复原先 OutRefs(...,1,1000) 的静默截断）。
+// 无分页上限 — 修复原先 OutEdges(...,1,1000) 的静默截断）。
 func (s *Service) refTargetIDs(id int64, field string) ([]int64, error) {
 	var ids []int64
 	if err := s.db.Add(
@@ -303,9 +303,9 @@ func (s *Service) refTargetIDs(id int64, field string) ([]int64, error) {
 	return ids, nil
 }
 
-// GetBySlug 按 slug 取节点; 不存在返回 (nil, nil)。
+// GetNodeBySlug 按 slug 取节点; 不存在返回 (nil, nil)。
 // 空 slug 永不命中（部分唯一索引: 空 slug 不进索引）。
-func (s *Service) GetBySlug(slug string) (*Node, error) {
+func (s *Service) GetNodeBySlug(slug string) (*Node, error) {
 	if slug == "" {
 		return nil, nil
 	}
@@ -378,9 +378,9 @@ func (s *Service) titleFrom(td types.TypeDef, fields Fields) string {
 	if tid <= 0 {
 		return ""
 	}
-	target, err := s.Get(tid)
+	target, err := s.GetNodeById(tid)
 	if err != nil || target == nil {
-		return "" // 引用目标缺失由 addRefs 的 checkTarget 报（主错误响亮）
+		return "" // 引用目标缺失由 addEdges 的 checkTarget 报（主错误响亮）
 	}
 	seg2 := path[1]
 	if seg2.JSON {
@@ -404,8 +404,8 @@ func (s *Service) titleFrom(td types.TypeDef, fields Fields) string {
 
 // ── 引用落边（引擎内部）────────────────────────
 
-// addRefs 校验 ref 目标（存在 + 类型匹配）并插入边。
-func (s *Service) addRefs(tx *dba.SQL, from int64, td types.TypeDef, refs map[string]any) error {
+// addEdges 校验 ref 目标（存在 + 类型匹配）并插入边。
+func (s *Service) addEdges(tx *dba.SQL, from int64, td types.TypeDef, refs map[string]any) error {
 	for fieldName, v := range refs {
 		f, ok := types.FieldByName(td, fieldName)
 		if !ok {
@@ -554,8 +554,9 @@ func (s *Service) ListQWithParams(q ListQuery, params map[string]any) ([]Node, i
 	if host == "" {
 		host = q.Type
 	}
-	db := s.db.Add(`SELECT * FROM nodes WHERE ${where} ${order:ORDER BY sort, id DESC} LIMIT #{1} OFFSET #{2}`,
-		q.Size, (q.Page-1)*q.Size)
+	// dba.Page 协议: ${F:*}（列槽, count 时换 COUNT(1)）+ ${order:}（排序槽,
+	// count 自动清空）— count/data 同 base 不可变分叉, filter 只编译一次。
+	db := s.db.Add(`SELECT ${F:*} FROM nodes WHERE ${where} ${order:ORDER BY sort, id DESC}`)
 	if whereExpr != "" {
 		var err error
 		db, err = s.CompileLispInto(db, whereExpr, host, params)
@@ -568,22 +569,8 @@ func (s *Service) ListQWithParams(q ListQuery, params map[string]any) ([]Node, i
 	if q.Sort != "" {
 		db = db.Var("order", "ORDER BY "+q.Sort)
 	}
-	var rows []Node
-	if err := db.List(&rows); err != nil {
-		return nil, 0, err
-	}
-	cdb := s.db.Add(`SELECT COUNT(1) FROM nodes WHERE ${where}`)
-	if whereExpr != "" {
-		var err error
-		cdb, err = s.CompileLispInto(cdb, whereExpr, host, params)
-		if err != nil {
-			return nil, 0, err
-		}
-	} else {
-		cdb = cdb.Var("where", "1 = 1")
-	}
-	var total int64
-	if _, err := cdb.Get(&total); err != nil {
+	rows, total, err := dba.Page[Node](db, q.Page, q.Size)
+	if err != nil {
 		return nil, 0, err
 	}
 	// Expand 接线: 批量路径展开（查询次数 = 路径长度, 与列表大小无关）

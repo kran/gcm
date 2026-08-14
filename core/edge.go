@@ -23,10 +23,10 @@ type Edge struct {
 // ErrEdgeNotFound 目标引用不存在。
 var ErrEdgeNotFound = errors.New("core: edge not found")
 
-// AddRef 公开写入口: 加一条引用。
+// AddEdge 公开写入口: 加一条引用。
 // 校验（fail-loud）: from 存在、field 属于 from 类型且是引用系、
 // to 存在且类型匹配; 重复（UNIQUE）报错。
-func (s *Service) AddRef(from, to int64, field string, sort int) (int64, error) {
+func (s *Service) AddEdge(from, to int64, field string, sort int) (int64, error) {
 	f, _, err := s.refFieldMeta(from, field)
 	if err != nil {
 		return 0, err
@@ -52,8 +52,8 @@ func (s *Service) AddRef(from, to int64, field string, sort int) (int64, error) 
 	return id, nil
 }
 
-// RemoveRef 删一条引用（按 id）。
-func (s *Service) RemoveRef(id int64) error {
+// RemoveEdge 删一条引用（按 id）。
+func (s *Service) RemoveEdge(id int64) error {
 	res, err := s.db.Add(
 		`DELETE FROM edges WHERE id = #{1}`, id).Exec()
 	if err != nil {
@@ -71,9 +71,9 @@ func (s *Service) RemoveRef(id int64) error {
 
 // ── 查询 ─────────────────────────────────────────
 
-// OutRefs 出边列表: from 出发、按 field 过滤、分页。
+// OutEdges 出边列表: from 出发、按 field 过滤、分页。
 // symmetric 字段: 双向展开（from=id OR to=id, 存一条查两向）。
-func (s *Service) OutRefs(from int64, field string, page, size int) ([]Edge, int64, error) {
+func (s *Service) OutEdges(from int64, field string, page, size int) ([]Edge, int64, error) {
 	_, sym, err := s.refFieldMeta(from, field)
 	if err != nil {
 		return nil, 0, err
@@ -86,9 +86,9 @@ func (s *Service) OutRefs(from int64, field string, page, size int) ([]Edge, int
 		[]any{field, from}, page, size)
 }
 
-// InRefs 入边列表: 指向 to、按 field 过滤、分页（反向查询 — 边双向, 引擎原语直查）。
-// symmetric 字段: 双向展开（与 OutRefs 同一集合）。
-func (s *Service) InRefs(to int64, field string, page, size int) ([]Edge, int64, error) {
+// InEdges 入边列表: 指向 to、按 field 过滤、分页（反向查询 — 边双向, 引擎原语直查）。
+// symmetric 字段: 双向展开（与 OutEdges 同一集合）。
+func (s *Service) InEdges(to int64, field string, page, size int) ([]Edge, int64, error) {
 	_, sym, err := s.refFieldMetaGlobal(field)
 	if err != nil {
 		return nil, 0, err
@@ -109,14 +109,14 @@ func (s *Service) Merge(from, to int64) error {
 	if from == to {
 		return errors.New("core: merge: from == to")
 	}
-	fromNode, err := s.Get(from)
+	fromNode, err := s.GetNodeById(from)
 	if err != nil {
 		return err
 	}
 	if fromNode == nil {
 		return ErrNotFound
 	}
-	toNode, err := s.Get(to)
+	toNode, err := s.GetNodeById(to)
 	if err != nil {
 		return err
 	}
@@ -170,7 +170,7 @@ func (s *Service) Merge(from, to int64) error {
 
 // refFieldMeta 按宿主节点的类型查字段定义（出边查询 — 字段归属宿主类型）。
 func (s *Service) refFieldMeta(nodeID int64, field string) (types.FieldDef, bool, error) {
-	n, err := s.Get(nodeID)
+	n, err := s.GetNodeById(nodeID)
 	if err != nil {
 		return types.FieldDef{}, false, err
 	}

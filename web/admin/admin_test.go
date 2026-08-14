@@ -176,7 +176,7 @@ func TestAdminCRUD(t *testing.T) {
 	if del.Code != 200 {
 		t.Fatalf("delete: %d", del.Code)
 	}
-	if n, _ := svc.Get(created.ID); n != nil {
+	if n, _ := svc.GetNodeById(created.ID); n != nil {
 		t.Fatal("node must be deleted")
 	}
 }

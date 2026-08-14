@@ -31,7 +31,7 @@ func TestFTSSync(t *testing.T) {
 		t.Fatal("test types must declare article search: true")
 	}
 	// 已发布文章 → 进索引
-	id, _ := s.Create(&Node{Type: "article", Status: StatusPublished,
+	id, _ := s.CreateNode(&Node{Type: "article", Status: StatusPublished,
 		Fields: Fields{"title": "人工智能与制造业", "body": "深度融合路径研究"}})
 	rows, total, err := s.Search("人工智能", "", 1, 10)
 	if err != nil {
@@ -41,25 +41,25 @@ func TestFTSSync(t *testing.T) {
 		t.Fatalf("published must be searchable: total=%d", total)
 	}
 	// 草稿 → 不进
-	draftID, _ := s.Create(&Node{Type: "article", Status: StatusDraft,
+	draftID, _ := s.CreateNode(&Node{Type: "article", Status: StatusDraft,
 		Fields: Fields{"title": "秘密草稿", "body": "不可搜"}})
 	_, total, _ = s.Search("秘密", "", 1, 10)
 	if total != 0 {
 		t.Fatal("draft must not be indexed")
 	}
 	// 改状态: 草稿发布 → 进; 发布转草稿 → 出
-	n, _ := s.Get(draftID)
+	n, _ := s.GetNodeById(draftID)
 	n.Status = StatusPublished
-	if err := s.Update(n); err != nil {
+	if err := s.UpdateNode(n); err != nil {
 		t.Fatal(err)
 	}
 	_, total, _ = s.Search("秘密", "", 1, 10)
 	if total != 1 {
 		t.Fatal("draft→published must enter index")
 	}
-	n2, _ := s.Get(id)
+	n2, _ := s.GetNodeById(id)
 	n2.Status = StatusDraft
-	if err := s.Update(n2); err != nil {
+	if err := s.UpdateNode(n2); err != nil {
 		t.Fatal(err)
 	}
 	_, total, _ = s.Search("人工智能", "", 1, 10)
@@ -67,7 +67,7 @@ func TestFTSSync(t *testing.T) {
 		t.Fatal("published→draft must leave index")
 	}
 	// 删除 → 出索引
-	if err := s.Delete(draftID); err != nil {
+	if err := s.DeleteNode(draftID); err != nil {
 		t.Fatal(err)
 	}
 	_, total, _ = s.Search("秘密", "", 1, 10)
@@ -79,11 +79,11 @@ func TestFTSSync(t *testing.T) {
 // 查询: 类型过滤 + 多词短语精确。
 func TestFTSQuery(t *testing.T) {
 	s := newFilterSvc(t)
-	s.Create(&Node{Type: "article", Status: StatusPublished,
+	s.CreateNode(&Node{Type: "article", Status: StatusPublished,
 		Fields: Fields{"title": "人工智能与制造业", "body": "产业路径研究"}})
-	s.Create(&Node{Type: "article", Status: StatusPublished,
+	s.CreateNode(&Node{Type: "article", Status: StatusPublished,
 		Fields: Fields{"title": "区域规划", "body": "2026 年规划报告"}})
-	s.Create(&Node{Type: "person", Status: StatusPublished,
+	s.CreateNode(&Node{Type: "person", Status: StatusPublished,
 		Fields: Fields{"name": "人工智能专家"}})
 
 	// 多词 phrase: 连续 bigram 才命中
@@ -111,7 +111,7 @@ func TestFTSQuery(t *testing.T) {
 // Rebuild: 全量重建（类型声明变化后）。
 func TestFTSRebuild(t *testing.T) {
 	s := newFilterSvc(t)
-	s.Create(&Node{Type: "article", Status: StatusPublished,
+	s.CreateNode(&Node{Type: "article", Status: StatusPublished,
 		Fields: Fields{"title": "重建测试", "body": "x"}})
 	// 手动删索引模拟损坏
 	if _, err := s.db.Add("DELETE FROM nodes_fts").Exec(); err != nil {

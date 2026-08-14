@@ -148,7 +148,7 @@ func BenchmarkGet(b *testing.B) {
 	svc := benchSvc(b)
 	ids := []int64{1, 50000, 99999}
 	for i := 0; i < b.N; i++ {
-		if _, err := svc.Get(ids[i%len(ids)]); err != nil {
+		if _, err := svc.GetNodeById(ids[i%len(ids)]); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -169,7 +169,7 @@ func BenchmarkOutRefs(b *testing.B) {
 	svc := benchSvc(b)
 	aid := int64(90000 + 5000 + 1000)
 	for i := 0; i < b.N; i++ {
-		if _, _, err := svc.OutRefs(aid, "authors", 1, 20); err != nil {
+		if _, _, err := svc.OutEdges(aid, "authors", 1, 20); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -180,7 +180,7 @@ func BenchmarkInRefs(b *testing.B) {
 	svc := benchSvc(b)
 	pid := int64(5000 + 100)
 	for i := 0; i < b.N; i++ {
-		if _, _, err := svc.InRefs(pid, "authors", 1, 20); err != nil {
+		if _, _, err := svc.InEdges(pid, "authors", 1, 20); err != nil {
 			b.Fatal(err)
 		}
 	}

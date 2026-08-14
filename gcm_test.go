@@ -35,7 +35,7 @@ types:
 		Types:     typesA,
 		Templates: tplA,
 		Setup: func(s *web.Site, svc *core.Service) error {
-			svc.Create(&core.Node{Type: "article", Status: core.StatusPublished, Fields: core.Fields{"title": "A文"}})
+			svc.CreateNode(&core.Node{Type: "article", Status: core.StatusPublished, Fields: core.Fields{"title": "A文"}})
 			return nil
 		},
 	})
@@ -48,7 +48,7 @@ types:
 		Types:     typesB,
 		Templates: tplB,
 		Setup: func(s *web.Site, svc *core.Service) error {
-			svc.Create(&core.Node{Type: "note", Status: core.StatusPublished, Fields: core.Fields{"title": "B记"}})
+			svc.CreateNode(&core.Node{Type: "note", Status: core.StatusPublished, Fields: core.Fields{"title": "B记"}})
 			return nil
 		},
 	})

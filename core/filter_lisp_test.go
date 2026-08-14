@@ -7,10 +7,10 @@ import (
 // Lisp filter（var 槽版）: 解析/编译/执行。
 func TestLispFilter(t *testing.T) {
 	s := newFilterSvc(t)
-	root, _ := s.Create(&Node{Type: "category", Slug: "root", Status: StatusPublished, Fields: Fields{"name": "根"}})
-	child, _ := s.Create(&Node{Type: "category", Slug: "child", Fields: Fields{"name": "子", "parent": root}})
-	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "甲", "featured": true, "categories": []any{child}}})
-	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "乙", "featured": false}})
+	root, _ := s.CreateNode(&Node{Type: "category", Slug: "root", Status: StatusPublished, Fields: Fields{"name": "根"}})
+	child, _ := s.CreateNode(&Node{Type: "category", Slug: "child", Fields: Fields{"name": "子", "parent": root}})
+	s.CreateNode(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "甲", "featured": true, "categories": []any{child}}})
+	s.CreateNode(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "乙", "featured": false}})
 
 	exec := func(lisp string, params map[string]any) []Node {
 		t.Helper()
@@ -48,14 +48,14 @@ func TestLispFilter(t *testing.T) {
 // 注册驱动: 站点自定义函数（Lisp 精髓 — 函数进表达式）。
 func TestLispRegisterFunc(t *testing.T) {
 	s := newFilterSvc(t)
-	root, _ := s.Create(&Node{Type: "category", Slug: "root", Fields: Fields{"name": "根"}})
-	child, _ := s.Create(&Node{Type: "category", Slug: "child", Fields: Fields{"name": "子", "parent": root}})
-	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "甲", "categories": []any{child}}})
+	root, _ := s.CreateNode(&Node{Type: "category", Slug: "root", Fields: Fields{"name": "根"}})
+	child, _ := s.CreateNode(&Node{Type: "category", Slug: "child", Fields: Fields{"name": "子", "parent": root}})
+	s.CreateNode(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "甲", "categories": []any{child}}})
 
 	// 站点注册: (children-of "root") → id 列表（直接参数）
 	s.RegisterLispFuncC("children-of", func(args []lispExpr) (string, []any, error) {
 		slug, _ := pathOfC(args[0])
-		cat, _ := s.GetBySlug(slug)
+		cat, _ := s.GetNodeBySlug(slug)
 		if cat == nil {
 			return "", nil, errTestSlug(slug)
 		}
@@ -104,19 +104,19 @@ func TestLispComplex(t *testing.T) {
 	// 根(发布) → 子(发布); 根草稿 → 子草稿
 	// 甲: 挂 child, 作者张三(高级), 标题"甲-深度", views=200 → 命中
 	// 乙: 挂 childDraft, 作者张三, 标题"乙", views=50 → 分类链根是草稿, 不命中
-	root, _ := s.Create(&Node{Type: "category", Slug: "root", Status: StatusPublished, Fields: Fields{"name": "根"}})
-	child, _ := s.Create(&Node{Type: "category", Slug: "child", Status: StatusPublished, Fields: Fields{"name": "子", "parent": root}})
-	rootD, _ := s.Create(&Node{Type: "category", Slug: "rootd", Status: StatusDraft, Fields: Fields{"name": "根草"}})
-	childD, _ := s.Create(&Node{Type: "category", Slug: "childd", Status: StatusDraft, Fields: Fields{"name": "子草", "parent": rootD}})
-	zhang, _ := s.Create(&Node{Type: "person", Slug: "zhang", Fields: Fields{"name": "张三", "level": "senior"}})
-	wang, _ := s.Create(&Node{Type: "person", Slug: "wang", Fields: Fields{"name": "王五", "level": "junior"}})
-	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{
+	root, _ := s.CreateNode(&Node{Type: "category", Slug: "root", Status: StatusPublished, Fields: Fields{"name": "根"}})
+	child, _ := s.CreateNode(&Node{Type: "category", Slug: "child", Status: StatusPublished, Fields: Fields{"name": "子", "parent": root}})
+	rootD, _ := s.CreateNode(&Node{Type: "category", Slug: "rootd", Status: StatusDraft, Fields: Fields{"name": "根草"}})
+	childD, _ := s.CreateNode(&Node{Type: "category", Slug: "childd", Status: StatusDraft, Fields: Fields{"name": "子草", "parent": rootD}})
+	zhang, _ := s.CreateNode(&Node{Type: "person", Slug: "zhang", Fields: Fields{"name": "张三", "level": "senior"}})
+	wang, _ := s.CreateNode(&Node{Type: "person", Slug: "wang", Fields: Fields{"name": "王五", "level": "junior"}})
+	s.CreateNode(&Node{Type: "article", Status: StatusPublished, Fields: Fields{
 		"title": "甲-深度分析", "featured": true, "views": float64(200),
 		"authors": []any{zhang}, "categories": []any{child}}})
-	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{
+	s.CreateNode(&Node{Type: "article", Status: StatusPublished, Fields: Fields{
 		"title": "乙-简讯", "featured": false, "views": float64(50),
 		"authors": []any{zhang}, "categories": []any{childD}}})
-	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{
+	s.CreateNode(&Node{Type: "article", Status: StatusPublished, Fields: Fields{
 		"title": "丙", "featured": true, "views": float64(300),
 		"authors": []any{wang}, "categories": []any{child}}})
 
@@ -147,12 +147,12 @@ func TestLispComplex(t *testing.T) {
 // 原子形态 (get 段... 字段 值) 是 = 的糖。
 func TestLispGetTargetCmp(t *testing.T) {
 	s := newFilterSvc(t)
-	child, _ := s.Create(&Node{Type: "category", Slug: "child", Fields: Fields{"name": "技术动态"}})
-	zhang, _ := s.Create(&Node{Type: "person", Slug: "zhang", Fields: Fields{"name": "张三", "level": "senior"}})
-	wang, _ := s.Create(&Node{Type: "person", Slug: "wang", Fields: Fields{"name": "王五", "level": "mid"}})
-	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{
+	child, _ := s.CreateNode(&Node{Type: "category", Slug: "child", Fields: Fields{"name": "技术动态"}})
+	zhang, _ := s.CreateNode(&Node{Type: "person", Slug: "zhang", Fields: Fields{"name": "张三", "level": "senior"}})
+	wang, _ := s.CreateNode(&Node{Type: "person", Slug: "wang", Fields: Fields{"name": "王五", "level": "mid"}})
+	s.CreateNode(&Node{Type: "article", Status: StatusPublished, Fields: Fields{
 		"title": "甲", "views": float64(200), "authors": []any{zhang}, "categories": []any{child}}})
-	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{
+	s.CreateNode(&Node{Type: "article", Status: StatusPublished, Fields: Fields{
 		"title": "乙", "views": float64(50), "authors": []any{wang}, "categories": []any{child}}})
 
 	exec := func(expr string) int {
@@ -185,11 +185,11 @@ func TestLispGetTargetCmp(t *testing.T) {
 // 占位符数组形态: (in categories {:ids}) — params 绑定 id 数组。
 func TestLispInPlaceholderArray(t *testing.T) {
 	s := newFilterSvc(t)
-	root, _ := s.Create(&Node{Type: "category", Slug: "root", Fields: Fields{"name": "根"}})
-	child, _ := s.Create(&Node{Type: "category", Slug: "child", Fields: Fields{"name": "子", "parent": root}})
-	other, _ := s.Create(&Node{Type: "category", Slug: "other", Fields: Fields{"name": "旁"}})
-	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "甲", "categories": []any{child}}})
-	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "乙", "categories": []any{other}}})
+	root, _ := s.CreateNode(&Node{Type: "category", Slug: "root", Fields: Fields{"name": "根"}})
+	child, _ := s.CreateNode(&Node{Type: "category", Slug: "child", Fields: Fields{"name": "子", "parent": root}})
+	other, _ := s.CreateNode(&Node{Type: "category", Slug: "other", Fields: Fields{"name": "旁"}})
+	s.CreateNode(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "甲", "categories": []any{child}}})
+	s.CreateNode(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "乙", "categories": []any{other}}})
 
 	exec := func(ids []any) int {
 		t.Helper()

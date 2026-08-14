@@ -24,7 +24,7 @@ func rejectRefAttrs(typeName string, f FieldDef) error {
 }
 
 // validateRefField ref 系 kind 共享的字段约束（宪法）:
-// to 必填且存在、代数互斥。边双向无需 reverse 声明（InRefs 引擎原语）。
+// to 必填且存在、代数互斥。边双向无需 reverse 声明（InEdges 引擎原语）。
 func validateRefField(t *Types, typeName string, f FieldDef, defs map[string]TypeDef) error {
 	if f.To == "" {
 		return fmt.Errorf("types: %q.%s: ref kind requires to", typeName, f.Name)

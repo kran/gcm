@@ -7,10 +7,10 @@ import (
 // var 链编译器（CompileLispV）: 与旧编译器（CompileLisp）结果一致。
 func TestLispCompileV(t *testing.T) {
 	s := newFilterSvc(t)
-	root, _ := s.Create(&Node{Type: "category", Slug: "root", Status: StatusPublished, Fields: Fields{"name": "根"}})
-	child, _ := s.Create(&Node{Type: "category", Slug: "child", Fields: Fields{"name": "子", "parent": root}})
-	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "甲", "featured": true, "categories": []any{child}}})
-	s.Create(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "乙", "featured": false}})
+	root, _ := s.CreateNode(&Node{Type: "category", Slug: "root", Status: StatusPublished, Fields: Fields{"name": "根"}})
+	child, _ := s.CreateNode(&Node{Type: "category", Slug: "child", Fields: Fields{"name": "子", "parent": root}})
+	s.CreateNode(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "甲", "featured": true, "categories": []any{child}}})
+	s.CreateNode(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "乙", "featured": false}})
 
 	// 挂载模式: base SQL 模板（${where} 槽）+ CompileLispInto + 执行
 	exec := func(lisp string, params map[string]any) []Node {
@@ -51,10 +51,10 @@ func TestLispCompileV(t *testing.T) {
 // ListQ 结构化查询: base SQL 模板 + ${where} 槽（Lisp 编译挂载）+ 分页/排序。
 func TestLispListQ(t *testing.T) {
 	s := newFilterSvc(t)
-	root, _ := s.Create(&Node{Type: "category", Slug: "root", Status: StatusPublished, Fields: Fields{"name": "根"}})
-	child, _ := s.Create(&Node{Type: "category", Slug: "child", Fields: Fields{"name": "子", "parent": root}})
-	s.Create(&Node{Type: "article", Status: StatusPublished, Sort: 1, Fields: Fields{"title": "甲", "categories": []any{child}}})
-	s.Create(&Node{Type: "article", Status: StatusPublished, Sort: 2, Fields: Fields{"title": "乙", "categories": []any{root}}})
+	root, _ := s.CreateNode(&Node{Type: "category", Slug: "root", Status: StatusPublished, Fields: Fields{"name": "根"}})
+	child, _ := s.CreateNode(&Node{Type: "category", Slug: "child", Fields: Fields{"name": "子", "parent": root}})
+	s.CreateNode(&Node{Type: "article", Status: StatusPublished, Sort: 1, Fields: Fields{"title": "甲", "categories": []any{child}}})
+	s.CreateNode(&Node{Type: "article", Status: StatusPublished, Sort: 2, Fields: Fields{"title": "乙", "categories": []any{root}}})
 
 	// Filter（Lisp）+ 分页
 	list, total, err := s.ListQ(ListQuery{Type: "article", Filter: `(in categories (subtree "root"))`, Page: 1, Size: 10})

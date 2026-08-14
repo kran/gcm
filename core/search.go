@@ -3,7 +3,7 @@ package core
 // 全文检索引擎（可替换接口 + 默认实现）。
 //
 // 设计:
-//   - 接口: Sync/Delete/Search/Rebuild — 换引擎（jieba 分词 / Bleve 等）只换实现,
+//   - 接口: Sync/DeleteNode/Search/Rebuild — 换引擎（jieba 分词 / Bleve 等）只换实现,
 //     调用方零改动。
 //   - "哪些节点进索引"是业务规则（类型 search:true + 已发布）, 由 Service 判断,
 //     引擎无脑"给什么索引什么"。

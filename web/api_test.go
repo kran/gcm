@@ -12,14 +12,14 @@ import (
 // /api/nodes: Lisp filter + sort + 分页 + expand + 错误路径。
 func TestAPINodes(t *testing.T) {
 	s, svc := newSite(t)
-	zhang, _ := svc.Create(&core.Node{Type: "person", Slug: "zhang", Fields: core.Fields{"name": "张三"}})
-	wang, _ := svc.Create(&core.Node{Type: "person", Slug: "wang", Fields: core.Fields{"name": "王五"}})
+	zhang, _ := svc.CreateNode(&core.Node{Type: "person", Slug: "zhang", Fields: core.Fields{"name": "张三"}})
+	wang, _ := svc.CreateNode(&core.Node{Type: "person", Slug: "wang", Fields: core.Fields{"name": "王五"}})
 	for i := 0; i < 5; i++ {
 		authors := []any{zhang}
 		if i%2 == 1 {
 			authors = []any{wang}
 		}
-		if _, err := svc.Create(&core.Node{Type: "article", Status: core.StatusPublished,
+		if _, err := svc.CreateNode(&core.Node{Type: "article", Status: core.StatusPublished,
 			Fields: core.Fields{"body": "x", "authors": authors}}); err != nil {
 			t.Fatal(err)
 		}
