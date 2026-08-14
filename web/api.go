@@ -23,7 +23,7 @@ import (
 )
 
 // apiSortCols ORDER BY 白名单（nodes 列; JSON 字段排序不在 API 边界内 —
-// 需要时 Go 层 ListQ 直接拼）。
+// 需要时 Go 层 Q 直接拼）。
 var apiSortCols = map[string]bool{
 	"id": true, "type": true, "title": true, "slug": true,
 	"status": true, "sort": true, "created_at": true, "updated_at": true,
@@ -53,7 +53,7 @@ func apiSortValid(sort string) bool {
 	return true
 }
 
-// apiNodes /api/nodes/{type} — 记录查询（ListQ 结构化查询直通）。
+// apiNodes /api/nodes/{type} — 记录查询（Q 结构化查询直通）。
 func (s *Site) apiNodes(ctx *CmsCtx) {
 	typ := strings.TrimSpace(ctx.PathValue("type"))
 	if typ == "" {
@@ -82,7 +82,7 @@ func (s *Site) apiNodes(ctx *CmsCtx) {
 		f = `(= type "` + typ + `")`
 	}
 	q := core.ListQuery{Filter: f, Sort: sort, Expand: expand, Page: page, Size: size}
-	list, total, err := s.svc.ListQ(q, nil)
+	list, total, err := s.svc.Q(q, nil)
 	if err != nil {
 		// filter 编译错误（语法/未知字段/未知函数）— fail-loud 400
 		ctx.String(http.StatusBadRequest, "api: "+err.Error())

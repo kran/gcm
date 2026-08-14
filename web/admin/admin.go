@@ -241,14 +241,12 @@ func (b *backend) listNodes(ctx *web.CmsCtx) {
 			filter = "(like title {:q})"
 		}
 	}
+	// 统一 Q: 类型过滤合成（filter 空时仅 (= type "x")）
+	f := `(= type "` + typ + `")`
 	if filter != "" {
-		// 类型过滤由使用方构建（合成 (= type "x")）
-		f := `(and (= type "` + typ + `") ` + filter + `)`
-		lq := core.ListQuery{Filter: f, Page: page, Size: size}
-		list, total, err = b.core.ListQ(lq, params)
-	} else {
-		list, total, err = b.core.List(typ, -1, page, size)
+		f = `(and (= type "` + typ + `") ` + filter + `)`
 	}
+	list, total, err = b.core.Q(core.ListQuery{Filter: f, Page: page, Size: size}, params)
 	if err != nil {
 		// filter 编译错误（filter-lisp: 前缀）= 客户端参数 → 400; 其余 → 500
 		if strings.Contains(err.Error(), "filter-lisp:") {
@@ -423,7 +421,8 @@ func (b *backend) tree(ctx *web.CmsCtx) {
 		ctx.Error(http.StatusBadRequest, "type required")
 		return
 	}
-	list, _, err := b.core.ListAny("type = #{1}", []any{typ}, 1, 10000)
+	list, _, err := b.core.Q(core.ListQuery{Filter: `(= type {:t})`, Page: 1, Size: 10000},
+		map[string]any{"t": typ})
 	if err != nil {
 		b.internal(ctx, err)
 		return
@@ -520,19 +519,23 @@ func (b *backend) search(ctx *web.CmsCtx) {
 	typ := ctx.Query("type")
 	page := ctx.QueryInt("page", 1)
 	size := ctx.QueryInt("size", 10)
-	// 简易 LIKE 顶着（FTS 后续）; 标题是类型字段（fields JSON）, 粗搜 slug+fields
-	where := "1 = 1"
-	args := []any{}
+	// Lisp 合成: type 可选过滤 + title/slug 模糊
+	f := ""
+	params := map[string]any{}
 	if typ != "" {
-		where += fmt.Sprintf(" AND type = #{%d}", len(args)+1)
-		args = append(args, typ)
+		f = `(= type {:typ})`
+		params["typ"] = typ
 	}
 	if q != "" {
-		// title 列（类型 title 声明映射）优先, slug 兜底 — 比 fields JSON LIKE 精确
-		where += fmt.Sprintf(" AND (title LIKE #{%d} OR slug LIKE #{%d})", len(args)+1, len(args)+1)
-		args = append(args, "%"+q+"%")
+		like := `(or (like title {:q}) (like slug {:q}))`
+		if f != "" {
+			f = `(and ` + f + ` ` + like + `)`
+		} else {
+			f = like
+		}
+		params["q"] = "%" + q + "%"
 	}
-	list, total, err := b.core.ListAny(where, args, page, size)
+	list, total, err := b.core.Q(core.ListQuery{Filter: f, Page: page, Size: size}, params)
 	if err != nil {
 		b.internal(ctx, err)
 		return

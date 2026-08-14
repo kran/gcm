@@ -103,9 +103,13 @@ func (e *Engine) queryFuncs() template.FuncMap {
 			fail(err)
 			return n
 		},
-		// list: 按类型列表（status<0 不过滤）
+		// list: 按类型列表（status<0 不过滤 — Lisp 合成）
 		"list": func(typ string, status, page, size int) []core.Node {
-			list, _, err := svc.List(typ, status, page, size)
+			f := `(= type "` + typ + `")`
+			if status >= 0 {
+				f = fmt.Sprintf(`(and (= type "%s") (= status %d))`, typ, status)
+			}
+			list, _, err := svc.Q(core.ListQuery{Filter: f, Page: page, Size: size})
 			fail(err)
 			return list
 		},
@@ -161,7 +165,7 @@ func (e *Engine) queryFuncs() template.FuncMap {
 			if typ != "" {
 				f = `(and (= type "` + typ + `") ` + expr + `)`
 			}
-			list, _, err := e.core.ListQ(core.ListQuery{Filter: f, Page: page, Size: size}, params)
+			list, _, err := e.core.Q(core.ListQuery{Filter: f, Page: page, Size: size}, params)
 			fail(err)
 			return list
 		},

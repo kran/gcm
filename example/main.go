@@ -134,7 +134,7 @@ func setup(site *web.Site, svc *core.Service) error {
 		for i, id := range ids {
 			anyIDs[i] = id
 		}
-		list, _, err := svc.ListQ(core.ListQuery{
+		list, _, err := svc.Q(core.ListQuery{
 			Filter: `(and (= type "article") (in ->categories {:ids}))`, Page: 1, Size: 50},
 			map[string]any{"ids": anyIDs})
 		if err != nil {
@@ -145,7 +145,8 @@ func setup(site *web.Site, svc *core.Service) error {
 
 	// 站点自定义路由（Go 层查数据, 模板纯展示）
 	site.Get("/", func(ctx *web.CmsCtx) {
-		latest, _, err := svc.List("article", core.StatusPublished, 1, 5)
+		latest, _, err := svc.Q(core.ListQuery{
+			Filter: `(and (= type "article") (= status 1))`, Page: 1, Size: 5})
 		if err != nil {
 			ctx.String(http.StatusInternalServerError, err.Error())
 			return
@@ -283,8 +284,8 @@ func seed(svc *core.Service) error {
 // catList 顶级分类（首页导航）。
 func catList(svc *core.Service) ([]core.Node, error) {
 	// 顶级分类 = 无 parent 出边的 category（ListAny 返回 (list, total, err)）
-	list, _, err := svc.ListAny("type = #{1} AND status = #{2}",
-		[]any{"category", core.StatusPublished}, 1, 50)
+	list, _, err := svc.Q(core.ListQuery{
+		Filter: `(and (= type "category") (= status 1))`, Page: 1, Size: 50})
 	return list, err
 }
 

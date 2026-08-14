@@ -87,7 +87,7 @@ func runScale(sc scale) {
 	personID := int64(sc.nodes/10 + 50)
 
 	bench("GetNodeById", func() { svc.GetNodeById(articleID) })
-	bench("List", func() { svc.List("article", core.StatusPublished, 1, 20) })
+	bench("Q", func() { svc.Q(core.ListQuery{Filter: `(and (= type "article") (= status 1))`, Page: 1, Size: 20}) })
 	bench("OutEdges", func() { svc.OutEdges("article", articleID, "authors", 1, 20) })
 	bench("InEdges", func() { svc.InEdges(personID, "authors", 1, 20) })
 	bench("Subtree", func() { svc.Subtree("category", 1, "parent", 20) })

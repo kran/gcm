@@ -48,7 +48,7 @@ func TestLispCompileV(t *testing.T) {
 	check(`(edge ->categories (edge ->parent (and (= status 1) (= $name "根"))))`, 1)
 }
 
-// ListQ 结构化查询: base SQL 模板 + ${where} 槽（Lisp 编译挂载）+ 分页/排序。
+// Q 结构化查询: base SQL 模板 + ${where} 槽（Lisp 编译挂载）+ 分页/排序。
 func TestLispListQ(t *testing.T) {
 	s := newFilterSvc(t)
 	root, _ := s.CreateNode(&Node{Type: "category", Slug: "root", Status: StatusPublished, Fields: Fields{"name": "根"}})
@@ -57,15 +57,15 @@ func TestLispListQ(t *testing.T) {
 	s.CreateNode(&Node{Type: "article", Status: StatusPublished, Sort: 2, Fields: Fields{"title": "乙", "categories": []any{root}}})
 
 	// Filter（Lisp）+ 分页
-	list, total, err := s.ListQ(ListQuery{Filter: `(and (= type "article") (in ->categories (subtree "root")))`, Page: 1, Size: 10})
+	list, total, err := s.Q(ListQuery{Filter: `(and (= type "article") (in ->categories (subtree "root")))`, Page: 1, Size: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if total != 2 || len(list) != 2 {
-		t.Fatalf("ListQ: total=%d len=%d", total, len(list))
+		t.Fatalf("Q: total=%d len=%d", total, len(list))
 	}
 	// Sort + 分页
-	list, _, err = s.ListQ(ListQuery{Filter: `(and (= type "article") (= status 1))`, Sort: "sort DESC", Page: 1, Size: 1})
+	list, _, err = s.Q(ListQuery{Filter: `(and (= type "article") (= status 1))`, Sort: "sort DESC", Page: 1, Size: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestLispListQ(t *testing.T) {
 		t.Fatalf("sort: %v", list)
 	}
 	// 空 filter
-	list, total, err = s.ListQ(ListQuery{Page: 1, Size: 10})
+	list, total, err = s.Q(ListQuery{Page: 1, Size: 10})
 	if err != nil || total == 0 {
 		t.Fatalf("no filter: %v", err)
 	}

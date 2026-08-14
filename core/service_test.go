@@ -197,7 +197,7 @@ func TestListFilter(t *testing.T) {
 	s.CreateNode(&Node{Type: "article", Status: StatusDraft, Sort: 2, Fields: Fields{"body": "b"}})
 	s.CreateNode(&Node{Type: "person", Fields: Fields{"name": "p"}})
 
-	list, total, err := s.List("article", StatusPublished, 1, 10)
+	list, total, err := s.Q(ListQuery{Filter: `(and (= type "article") (= status 1))`, Page: 1, Size: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,17 +205,17 @@ func TestListFilter(t *testing.T) {
 		t.Fatalf("published: %d %d %v", total, len(list), list)
 	}
 	// 分页: draft 1 条
-	list, total, _ = s.List("article", StatusDraft, 1, 10)
+	list, total, _ = s.Q(ListQuery{Filter: `(and (= type "article") (= status 0))`, Page: 1, Size: 10})
 	if total != 1 {
 		t.Fatalf("draft total: %d", total)
 	}
 	// 不过滤
-	_, total, _ = s.List("article", -1, 1, 10)
+	_, total, _ = s.Q(ListQuery{Filter: `(= type "article")`, Page: 1, Size: 10})
 	if total != 2 {
 		t.Fatalf("all total: %d", total)
 	}
 	// 按类型隔离
-	_, total, _ = s.List("person", -1, 1, 10)
+	_, total, _ = s.Q(ListQuery{Filter: `(= type "person")`, Page: 1, Size: 10})
 	if total != 1 {
 		t.Fatalf("person total: %d", total)
 	}

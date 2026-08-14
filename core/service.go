@@ -220,10 +220,6 @@ func (s *Service) syncSearchAndFire(tx *dba.SQL, n *Node) error {
 // ── 读 ─────────────────────────────────────────
 
 // ListAny 通用分页列表（管理通道: where 自定义, 占位符从 #{1} 起）。
-func (s *Service) ListAny(where string, args []any, page, size int) ([]Node, int64, error) {
-	return s.dao.Page(page, size, where+" ORDER BY id DESC", args...)
-}
-
 // GetNodeById 按 id 取节点; 不存在返回 (nil, nil) — 查询语义（"找不到"不是错误,
 // 模板层 get 返回 nil 渲染空）。管理 API 需区分时用 FullFields（ErrNotFound）。
 func (s *Service) GetNodeById(id int64) (*Node, error) {
@@ -300,24 +296,6 @@ func (s *Service) GetNodeBySlug(slug string) (*Node, error) {
 
 // List 按类型 + 状态分页列表（status<0 不过滤）。
 // ORDER BY sort, id DESC。
-func (s *Service) List(typeName string, status int, page, size int) ([]Node, int64, error) {
-	where := "type = #{1}"
-	args := []any{typeName}
-	if status >= 0 {
-		where += " AND status = #{2}"
-		args = append(args, status)
-	}
-	total, err := s.dao.Count(where, args...)
-	if err != nil {
-		return nil, 0, err
-	}
-	list, _, err := s.dao.Page(page, size, where+" ORDER BY sort, id DESC", args...)
-	if err != nil {
-		return nil, 0, err
-	}
-	return list, total, nil
-}
-
 // titleFrom 抽标题列: 类型 title 声明字段的值（双存: fields 保留完整,
 // 列是投影 — 单事务内同步, 无不一致窗口）。无声明 → 空。
 // 支持两种声明: "字段名"（本类型标量字段）和穿透 "ref.$字段"/"ref.列"
@@ -509,9 +487,9 @@ type ListQuery struct {
 	Size   int
 }
 
-// ListQ 结构化查询执行（占位符参数可选 — {:name} 绑定）:
+// Q 结构化查询执行（占位符参数可选 — {:name} 绑定）:
 // base SQL 模板 + ${where}/${order} var 槽; 参数经变参传入, 无则 nil。
-func (s *Service) ListQ(q ListQuery, params ...map[string]any) ([]Node, int64, error) {
+func (s *Service) Q(q ListQuery, params ...map[string]any) ([]Node, int64, error) {
 	var p map[string]any
 	if len(params) > 0 {
 		p = params[0]
