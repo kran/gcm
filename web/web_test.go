@@ -185,3 +185,29 @@ func TestNodeEnrichURL(t *testing.T) {
 		t.Fatalf("no slug url: %s", bn.URL())
 	}
 }
+
+// HookCandidates: 站点自定义模板级联（可变参数 — 替换候选列表）。
+func TestHookCandidates(t *testing.T) {
+	_, svc := newSite(t)
+	dir := t.TempDir()
+	tplDir := filepath.Join(dir, "templates")
+	os.MkdirAll(tplDir, 0755)
+	// 只有"父分类 slug 页"模板（无 slug 页/类型页）
+	os.WriteFile(filepath.Join(tplDir, "node--article--parentcat.html"),
+		[]byte(`<p>parent template</p>`), 0644)
+	os.WriteFile(filepath.Join(tplDir, "node.html"), []byte(`<p>default</p>`), 0644)
+	eng := render.New(tplDir, svc)
+	s2 := New(svc, eng)
+	DefineRenderHooks(svc)
+	Mount(s2, "", "")
+	// hook: 候选替换为父分类 slug 页
+	svc.Hooks().AddHook(HookCandidates, func(ctx *CmsCtx, n *core.Node, out *[]string) error {
+		*out = []string{"node--article--parentcat.html", "node.html"}
+		return nil
+	})
+	id, _ := svc.CreateNode(&core.Node{Type: "article", Slug: "hello", Status: core.StatusPublished, Fields: core.Fields{"body": "x"}})
+	rec := get(t, s2, "/node/"+fmtInt(id))
+	if !strings.Contains(rec.Body.String(), "parent template") {
+		t.Fatalf("custom candidates: %s", rec.Body.String())
+	}
+}

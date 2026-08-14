@@ -23,6 +23,12 @@ const HookNodeRender = "web.node.render"
 // 生成或追加附加数据（n.Extra["xxx"]）。默认实现生成 /node/{slug|id} url。
 const HookNodeEnrich = "web.node.enrich"
 
+// HookCandidates 节点模板候选计算事件（节点页渲染前 — 可变参数）:
+// 原型 func(ctx *CmsCtx, n *core.Node, candidates *[]string) error —
+// 站点自定义级联规则（如 slug 页找不到找父分类 slug 页）: handler 修改
+// *candidates 切片（替换/插入候选名）。默认 = render.Candidates 三级级联。
+const HookCandidates = "web.node.candidates"
+
 // DefineRenderHooks 声明渲染事件（注册即校验签名 — 站点 AddHook 前必须存在;
 // 装配层调用）。proto 带 CmsCtx, 定义必须在 web 包。
 func DefineRenderHooks(svc *core.Service) error {
@@ -30,6 +36,7 @@ func DefineRenderHooks(svc *core.Service) error {
 		hook.Spec{Name: HookRender, Proto: func(*CmsCtx, map[string]any) error { return nil }},
 		hook.Spec{Name: HookNodeRender, Proto: func(*CmsCtx, *core.Node, map[string]any) error { return nil }},
 		hook.Spec{Name: HookNodeEnrich, Proto: func(*CmsCtx, *core.Node) error { return nil }},
+		hook.Spec{Name: HookCandidates, Proto: func(*CmsCtx, *core.Node, *[]string) error { return nil }},
 	); err != nil {
 		return err
 	}

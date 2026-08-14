@@ -48,8 +48,15 @@ func (s *Site) nodeHandler(ctx *CmsCtx) {
 		ctx.String(http.StatusInternalServerError, "500 internal server error")
 		return
 	}
+	// 模板候选: 默认级联 + HookCandidates 站点可自定义（可变参数）
+	candidates := render.Candidates(n)
+	if err := s.svc.Hooks().Fire(HookCandidates, ctx, n, &candidates); err != nil {
+		slog.Error("candidates hook failed", "path", raw, "err", err)
+		ctx.String(http.StatusInternalServerError, "500 internal server error")
+		return
+	}
 	// 统一走 Render（Fire HookRender — 页面级数据注入与自定义路由一致）
-	ctx.Render(render.Candidates(n), data)
+	ctx.Render(candidates, data)
 }
 
 // staticHandler /static/* → 磁盘目录。
