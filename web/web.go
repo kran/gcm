@@ -164,15 +164,6 @@ func MountContent(s *Site) {
 
 // ── 渲染出口 ─────────────────────────────────────
 
-// nodeURL 节点 URL: 统一 /node/{slug|id}（URL 模式是站点渲染层的事 —
-// gcm 框架不预设; 站点自定义用 HookNodeEnrich 覆盖 Extra["url"]）。
-func (s *Site) nodeURL(n *core.Node) string {
-	if n.Slug != "" {
-		return "/node/" + n.Slug
-	}
-	return "/node/" + strconv.FormatInt(n.ID, 10)
-}
-
 // renderHTML 渲染模板; 失败: Debug 显示错误页（500 + 详情）; 生产 HTML 注释。
 func (s *Site) renderHTML(ctx *CmsCtx, candidates []string, data map[string]any) {
 	var buf bytes.Buffer
@@ -198,13 +189,16 @@ func (s *Site) renderErrorDetail(ctx *CmsCtx, err error, candidates []string, da
 	}
 	ctx.SetHeader("Content-Type", "text/html; charset=utf-8")
 	ctx.W.WriteHeader(http.StatusInternalServerError)
-	fmt.Fprintf(ctx.W, `<!DOCTYPE html><html><head><title>Render Error</title></head><body style="font-family:monospace;padding:32px;background:#1a1a1a;color:#e5e7eb;">
-<h1 style="color:#f87171;">Render Error</h1>
-<h3 style="color:#9ca3af;">%s %s</h3>
-<pre style="background:#111;padding:16px;border-radius:8px;color:#fbbf24;overflow:auto;">%s</pre>
-<h4>候选模板</h4><pre style="background:#111;padding:12px;border-radius:8px;color:#93c5fd;">%s</pre>
-<h4>数据 keys</h4><pre style="background:#111;padding:12px;border-radius:8px;color:#a7f3d0;">%s</pre>
-</body></html>`, ctx.R.Method, ctx.R.URL.Path, html.EscapeString(err.Error()),
+	fmt.Fprintf(ctx.W, `
+		<!DOCTYPE html><html>
+		<head><title>Render Error</title></head>
+		<body style="font-family:monospace;padding:32px;background:#1a1a1a;color:#e5e7eb;">
+		<h1 style="color:#f87171;">Render Error</h1>
+		<h3 style="color:#9ca3af;">%s %s</h3>
+		<pre style="background:#111;padding:16px;border-radius:8px;color:#fbbf24;overflow:auto;">%s</pre>
+		<h4>候选模板</h4><pre style="background:#111;padding:12px;border-radius:8px;color:#93c5fd;">%s</pre>
+		<h4>数据 keys</h4><pre style="background:#111;padding:12px;border-radius:8px;color:#a7f3d0;">%s</pre>
+		</body></html>`, ctx.R.Method, ctx.R.URL.Path, html.EscapeString(err.Error()),
 		html.EscapeString(strings.Join(candidates, " → ")), html.EscapeString(strings.Join(keys, ", ")))
 }
 
@@ -270,7 +264,7 @@ func (s *Site) nodeHandler() func(ctx *CmsCtx) {
 			n.Extra = map[string]any{}
 		}
 		if _, ok := n.Extra["url"]; !ok {
-			n.Extra["url"] = s.nodeURL(n)
+			n.Extra["url"] = n.URL() // Node.URL — 默认路由约定, 站点可覆盖
 		}
 		if err := s.svc.Hooks().Fire(HookNodeRender, ctx, n, data); err != nil {
 			slog.Error("node render hook failed", "path", raw, "err", err)

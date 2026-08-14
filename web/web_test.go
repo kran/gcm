@@ -171,18 +171,18 @@ func TestDebugRenderError(t *testing.T) {
 
 // NodeEnrich: 默认 url 注入（统一 /node/{slug|id} — URL 模式是站点层的事）。
 func TestNodeEnrichURL(t *testing.T) {
-	s, svc := newSite(t)
+	_, svc := newSite(t)
 	a, _ := svc.CreateNode(&core.Node{Type: "article", Slug: "hello", Status: core.StatusPublished,
 		Fields: core.Fields{"body": "x"}})
 	n, _ := svc.GetNodeById(a)
-	if s.nodeURL(n) != "/node/hello" {
-		t.Fatalf("node url: %s", s.nodeURL(n))
+	if n.URL() != "/node/hello" {
+		t.Fatalf("node url: %s", n.URL())
 	}
 	// 无 slug → /node/{id}
 	b, _ := svc.CreateNode(&core.Node{Type: "article", Status: core.StatusPublished,
 		Fields: core.Fields{"body": "y"}})
 	bn, _ := svc.GetNodeById(b)
-	if s.nodeURL(bn) != "/node/"+strconv.FormatInt(b, 10) {
-		t.Fatalf("no slug url: %s", s.nodeURL(bn))
+	if bn.URL() != "/node/"+strconv.FormatInt(b, 10) {
+		t.Fatalf("no slug url: %s", bn.URL())
 	}
 }

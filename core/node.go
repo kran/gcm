@@ -9,6 +9,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 )
 
@@ -50,6 +51,19 @@ func (f *Fields) Scan(v any) error {
 }
 
 // Node 节点: 一切实体（内容 / term / 关系节点）, type 区分。
+// URL 默认节点 URL（gcm 路由约定 /node/{slug|id}）; nil 安全返回 "#"。
+// URL 模式是站点渲染层的事 — 这是 gcm 默认路由的约定值, 站点自定义
+// 用 HookNodeEnrich 覆盖 Extra["url"]。
+func (n *Node) URL() string {
+	if n == nil {
+		return "#"
+	}
+	if n.Slug != "" {
+		return "/node/" + n.Slug
+	}
+	return "/node/" + strconv.FormatInt(n.ID, 10)
+}
+
 type Node struct {
 	ID        int64     `db:"id,omitempty" json:"id"` // omitempty: 插入时跳零值走自增
 	Type      string    `db:"type" json:"type"`
