@@ -172,12 +172,12 @@ func (f *ftsIndex) Search(q, typ string, page, size int) ([]Node, int64, error) 
 	// bm25 升序 = 相关性降序; 权重: type 0（过滤列）, title 10, body 1
 	// 链式 Add: 子查询分页段独立计数（#{1} = size, #{2} = offset）
 	var rows []Node
-	if err := f.svc.db.Add(
+	dq := f.svc.db.Add(
 		`SELECT n.* FROM nodes n JOIN (
 			SELECT rowid FROM nodes_fts WHERE `+where+`
 			ORDER BY bm25(nodes_fts, 0.0, 10.0, 1.0)`, args...).
-		Add(`LIMIT #{1} OFFSET #{2}) f ON f.rowid = n.id`, size, (page-1)*size).
-		List(&rows); err != nil {
+		Add(`LIMIT #{1} OFFSET #{2}) f ON f.rowid = n.id`, size, (page-1)*size)
+	if err := dq.List(&rows); err != nil {
 		return nil, 0, fmt.Errorf("core: search: %w", err)
 	}
 	return rows, total, nil
@@ -190,7 +190,8 @@ func (f *ftsIndex) Rebuild() error {
 			return err
 		}
 		var rows []Node
-		if err := tx.Add(`SELECT * FROM nodes WHERE status = #{1}`, StatusPublished).List(&rows); err != nil {
+		q := tx.Add(`SELECT * FROM nodes WHERE status = #{1}`, StatusPublished)
+		if err := q.List(&rows); err != nil {
 			return err
 		}
 		for i := range rows {

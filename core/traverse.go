@@ -73,7 +73,8 @@ func (s *Service) EquivalenceClass(start int64, field string, maxHops int) ([]in
 // walk 执行递归 CTE, 返回 id 列表。
 func (s *Service) walk(cte string, args ...any) ([]int64, error) {
 	var ids []int64
-	if err := s.db.Add(cte, args...).List(&ids); err != nil {
+	q := s.db.Add(cte, args...)
+	if err := q.List(&ids); err != nil {
 		return nil, fmt.Errorf("core: traverse: %w", err)
 	}
 	return ids, nil

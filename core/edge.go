@@ -225,9 +225,9 @@ func (s *Service) edgePage(where string, args []any, page, size int) ([]Edge, in
 	}
 	// 链式 Add: 每段占位符从 #{1} 独立计数（分页段不再手工编号）
 	var rows []Edge
-	if err := s.db.Add(`SELECT * FROM edges WHERE `+where, args...).
-		Add(`ORDER BY sort, id LIMIT #{1} OFFSET #{2}`, size, (page-1)*size).
-		List(&rows); err != nil {
+	q := s.db.Add(`SELECT * FROM edges WHERE `+where, args...).
+		Add(`ORDER BY sort, id LIMIT #{1} OFFSET #{2}`, size, (page-1)*size)
+	if err := q.List(&rows); err != nil {
 		return nil, 0, err
 	}
 	return rows, total, nil

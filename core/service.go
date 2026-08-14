@@ -227,15 +227,7 @@ func (s *Service) ListAny(where string, args []any, page, size int) ([]Node, int
 	if size < 1 {
 		size = 20
 	}
-	total, err := s.dao.Count(where, args...)
-	if err != nil {
-		return nil, 0, err
-	}
-	list, _, err := s.dao.Page(page, size, where+" ORDER BY id DESC", args...)
-	if err != nil {
-		return nil, 0, err
-	}
-	return list, total, nil
+	return s.dao.Page(page, size, where+" ORDER BY id DESC", args...)
 }
 
 // GetNodeById 按 id 取节点; 不存在返回 (nil, nil) — 查询语义（"找不到"不是错误,
@@ -295,9 +287,9 @@ func (s *Service) FullFields(id int64) (Fields, error) {
 // 无分页上限 — 修复原先 OutEdges(...,1,1000) 的静默截断）。
 func (s *Service) refTargetIDs(id int64, field string) ([]int64, error) {
 	var ids []int64
-	if err := s.db.Add(
-		`SELECT to_node FROM edges WHERE from_node = #{1} AND field = #{2} ORDER BY sort, id`,
-		id, field).List(&ids); err != nil {
+	q := s.db.Add(`SELECT to_node FROM edges WHERE from_node = #{1} AND field = #{2} ORDER BY sort, id`,
+		id, field)
+	if err := q.List(&ids); err != nil {
 		return nil, err
 	}
 	return ids, nil

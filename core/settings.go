@@ -77,7 +77,8 @@ func (s *Service) GetSettings(keys []string) (map[string]Setting, error) {
 		return map[string]Setting{}, nil
 	}
 	var rows []Setting
-	if err := s.db.Add(`SELECT * FROM settings WHERE key IN (#{1|expand})`, keys).List(&rows); err != nil {
+	q := s.db.Add(`SELECT * FROM settings WHERE key IN (#{1|expand})`, keys)
+	if err := q.List(&rows); err != nil {
 		return nil, fmt.Errorf("settings: %w", err)
 	}
 	out := map[string]Setting{}

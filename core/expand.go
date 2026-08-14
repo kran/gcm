@@ -14,8 +14,8 @@ func (s *Service) nodesByIDs(ids []int64) ([]Node, error) {
 	}
 	// #{1|expand}: dba 展开切片为独立占位符（不再手工拼占位符）
 	var rows []Node
-	if err := s.db.Add(
-		`SELECT * FROM nodes WHERE id IN (#{1|expand})`, ids).List(&rows); err != nil {
+	q := s.db.Add(`SELECT * FROM nodes WHERE id IN (#{1|expand})`, ids)
+	if err := q.List(&rows); err != nil {
 		return nil, fmt.Errorf("core: nodesByIDs: %w", err)
 	}
 	return rows, nil
@@ -243,10 +243,11 @@ func (s *Service) edgesFor(ids []int64, field string, in bool, max int) (map[int
 	}
 	// LIMIT max+1 探测: 取到 max+1 行 = 超限（不静默截断）
 	var rows []Edge
-	if err := s.db.Add(
+	q := s.db.Add(
 		`SELECT * FROM edges WHERE field = #{1} AND #{2|quote} IN (#{3|expand})
 		 ORDER BY #{2|quote}, sort, id LIMIT #{4}`,
-		field, col, ids, max+1).List(&rows); err != nil {
+		field, col, ids, max+1)
+	if err := q.List(&rows); err != nil {
 		return nil, fmt.Errorf("core: edgesFor: %w", err)
 	}
 	if len(rows) > max {
