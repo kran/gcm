@@ -62,6 +62,10 @@ type Options struct {
 	// Debug 开发模式: 渲染失败显示错误页（模板名/行号/原因/候选/数据 keys）;
 	// 生产空值 = HTML 注释（不泄漏细节）。
 	Debug bool
+	// SQLLogger dba SQL 日志器（nil = 默认: slog.Default 慢查询 1s 阈值）—
+	// 站点自定义（调阈值/换 logger/关闭用 nil + 跳过 SetLogger?）— 构造
+	// 用 dba.NewLogger(logger, threshold, clean) 或任意 LogFunc。
+	SQLLogger dba.LogFunc
 }
 
 // App 多站点应用: HostMux 按域名分发到各站点。
@@ -143,7 +147,12 @@ func (a *App[T]) openDB(spec SiteSpec[T]) (*dba.SQL, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
-	db = db.SetLogger(dba.NewLogger(slog.Default(), time.Second*1, false))
+	// SQL 日志: 站点自定义优先, 否则默认（慢查询 1s 阈值, slog.Default）
+	if a.options.SQLLogger != nil {
+		db = db.SetLogger(a.options.SQLLogger)
+	} else {
+		db = db.SetLogger(dba.NewLogger(slog.Default(), time.Second, false))
+	}
 	if err := migrations.Up(db); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
