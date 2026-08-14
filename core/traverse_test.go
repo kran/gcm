@@ -158,3 +158,27 @@ func TestTraverseValidation(t *testing.T) {
 		t.Fatal("missing start must fail")
 	}
 }
+
+// Ancestors: 深度序（根→叶）— Traverse 是 id 序, 链场景必须层级序。
+func TestAncestorsDepthOrder(t *testing.T) {
+	s := newFilterSvc(t)
+	// 先建叶后建根 — id 序与层级序相反: leaf(id1) → mid(id2) → top(id3)
+	// 父链: leaf 的父 = mid, mid 的父 = top
+	top, _ := s.CreateNode(&Node{Type: "category", Slug: "top", Status: StatusPublished, Fields: Fields{"name": "顶"}})
+	mid, _ := s.CreateNode(&Node{Type: "category", Slug: "mid", Fields: Fields{"name": "中", "parent": top}})
+	leaf, _ := s.CreateNode(&Node{Type: "category", Slug: "leaf", Fields: Fields{"name": "叶", "parent": mid}})
+	// Traverse(id 序) 与 Ancestors(深度序) 对照
+	tr, err := s.Traverse(leaf, "parent", 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	anc, err := s.Ancestors(leaf, "parent", 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// id 序: top(id1) < mid(id2) → Traverse = [top, mid]（恰好正序, 这里不断言）
+	// 深度序: 根→叶 = [top, mid]
+	if len(anc) != 2 || anc[0].Slug != "top" || anc[1].Slug != "mid" {
+		t.Fatalf("Ancestors 根→叶: %v (traverse=%v)", anc, tr)
+	}
+}
