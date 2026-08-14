@@ -425,8 +425,7 @@ func (s *Service) addEdges(tx *dba.SQL, from int64, td types.TypeDef, refs map[s
 // checkTarget 目标存在且类型匹配。
 func (s *Service) checkTarget(tx *dba.SQL, id int64, wantType string) error {
 	var typ string
-	found, err := tx.Add(
-		`SELECT type FROM nodes WHERE id = #{1}`, id).Get(&typ)
+	found, err := tx.Add(`SELECT type FROM nodes WHERE id = #{1}`, id).Get(&typ)
 	if err != nil {
 		return err
 	}
@@ -492,7 +491,7 @@ func (s *Service) refIDs(f types.FieldDef, v any) ([]int64, error) {
 	}
 }
 
-// toID 数值 → int64（JSON 解码后是 float64）。
+// ToID 数值 → int64（JSON 解码后是 float64）。
 func ToID(v any) (int64, error) {
 	switch n := v.(type) {
 	case int64:

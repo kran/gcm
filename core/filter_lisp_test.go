@@ -33,16 +33,16 @@ func TestLispFilter(t *testing.T) {
 	}
 
 	check(`(and (= type "article") (= status 1))`, 2)
-	check(`(= $.featured true)`, 1)
-	check(`(and (= status 1) (= $.featured true))`, 1)
-	check(`(not (= $.featured true))`, 1)
-	rows := exec(`(-> categories {:id})`, map[string]any{"id": child})
+	check(`(= $featured true)`, 1)
+	check(`(and (= status 1) (= $featured true))`, 1)
+	check(`(not (= $featured true))`, 1)
+	rows := exec(`(edge ->categories {:id})`, map[string]any{"id": child})
 	if len(rows) != 1 {
 		t.Fatalf("placeholder ref: %d", len(rows))
 	}
-	check(`(in categories (subtree "root"))`, 1)
-	check(`(get (-> categories) (-> parent) $.name "根")`, 1)
-	check(`(get (-> categories) (-> parent (= status 1)) $.name "根")`, 1)
+	check(`(in ->categories (subtree "root"))`, 1)
+	check(`(edge ->categories (edge ->parent (= $name "根")))`, 1)
+	check(`(edge ->categories (edge ->parent (and (= status 1) (= $name "根"))))`, 1)
 }
 
 // 注册驱动: 站点自定义函数（Lisp 精髓 — 函数进表达式）。
@@ -122,11 +122,11 @@ func TestLispComplex(t *testing.T) {
 
 	// 复杂表达式: 命中甲（root 子树 + 作者 senior + 标题含甲 + 分类父链全发布 + views>100）
 	expr := `(and (= status 1)
-	            (in categories (subtree "root"))
-	            (get (-> authors) $.level "senior")
-	            (like $.title "%甲%")
-	            (get (-> categories) (-> parent (= status 1)) $.name "根")
-	            (> $.views 100))`
+	            (in ->categories (subtree "root"))
+	            (edge ->authors (= $level "senior"))
+	            (like $title "%甲%")
+	            (edge ->categories (edge ->parent (and (= status 1) (= $name "根"))))
+	            (> $views 100))`
 	q := s.db.Add(`SELECT * FROM nodes WHERE ${where}`)
 	q, err := s.CompileLispInto(q, expr, "article", nil)
 	if err != nil {
@@ -144,7 +144,7 @@ func TestLispComplex(t *testing.T) {
 }
 
 // 目标比较不止 =: like / >= / != 全部可作 get 目标（表达式形态）;
-// 原子形态 (get 段... 字段 值) 是 = 的糖。
+// edge 目标比较表达式形态（like/>=/!= 全支持）。
 func TestLispGetTargetCmp(t *testing.T) {
 	s := newFilterSvc(t)
 	child, _ := s.CreateNode(&Node{Type: "category", Slug: "child", Fields: Fields{"name": "技术动态"}})
@@ -168,21 +168,21 @@ func TestLispGetTargetCmp(t *testing.T) {
 		}
 		return len(rows)
 	}
-	if n := exec(`(get (-> authors) (like $.name "%三%"))`); n != 1 {
+	if n := exec(`(edge ->authors (like $name "%三%"))`); n != 1 {
 		t.Fatalf("like target: %d", n)
 	}
-	if n := exec(`(get (-> authors) (>= $.level "mid"))`); n != 2 {
+	if n := exec(`(edge ->authors (>= $level "mid"))`); n != 2 {
 		t.Fatalf(">= target: %d", n)
 	}
-	if n := exec(`(get (-> authors) (!= $.level "senior"))`); n != 1 {
+	if n := exec(`(edge ->authors (!= $level "senior"))`); n != 1 {
 		t.Fatalf("!= target: %d", n)
 	}
-	if n := exec(`(get (-> authors) $.level "senior")`); n != 1 {
+	if n := exec(`(edge ->authors (= $level "senior"))`); n != 1 {
 		t.Fatalf("atomic = target: %d", n)
 	}
 }
 
-// 占位符数组形态: (in categories {:ids}) — params 绑定 id 数组。
+// 占位符数组形态: (in ->categories {:ids}) — params 绑定 id 数组。
 func TestLispInPlaceholderArray(t *testing.T) {
 	s := newFilterSvc(t)
 	root, _ := s.CreateNode(&Node{Type: "category", Slug: "root", Fields: Fields{"name": "根"}})
@@ -194,7 +194,7 @@ func TestLispInPlaceholderArray(t *testing.T) {
 	exec := func(ids []any) int {
 		t.Helper()
 		q := s.db.Add(`SELECT * FROM nodes WHERE ${where}`)
-		q, err := s.CompileLispInto(q, `(in categories {:ids})`, "article", map[string]any{"ids": ids})
+		q, err := s.CompileLispInto(q, `(in ->categories {:ids})`, "article", map[string]any{"ids": ids})
 		if err != nil {
 			t.Fatalf("compile: %v", err)
 		}
@@ -212,5 +212,70 @@ func TestLispInPlaceholderArray(t *testing.T) {
 	}
 	if n := exec([]any{root}); n != 0 {
 		t.Fatalf("无关 id: %d", n)
+	}
+}
+
+// 新语法专项: 数组字面量 / 标量 IN / 入边 / 空格字符串 / 空数组。
+func TestLispNewSyntax(t *testing.T) {
+	s := newFilterSvc(t)
+	root, _ := s.CreateNode(&Node{Type: "category", Slug: "root", Status: StatusPublished, Fields: Fields{"name": "根"}})
+	child, _ := s.CreateNode(&Node{Type: "category", Slug: "child", Status: StatusPublished, Fields: Fields{"name": "子", "parent": root}})
+	zhang, _ := s.CreateNode(&Node{Type: "person", Slug: "zhang", Fields: Fields{"name": "张三"}})
+	aid, _ := s.CreateNode(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "hello world 甲", "featured": true, "views": float64(200), "authors": []any{zhang}, "categories": []any{child}}})
+	s.CreateNode(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "乙", "featured": false, "views": float64(50)}})
+	// 评论（入边场景: comment.article ref 字段 → 文章, 引擎自动落边）
+	_, _ = s.CreateNode(&Node{Type: "comment", Fields: Fields{"body": "好评", "article": aid}})
+
+	exec := func(expr string) int {
+		t.Helper()
+		q := s.db.Add(`SELECT * FROM nodes WHERE ${where}`)
+		q, err := s.CompileLispInto(q, expr, "article", nil)
+		if err != nil {
+			t.Fatalf("compile %q: %v", expr, err)
+		}
+		var rows []Node
+		if err := q.List(&rows); err != nil {
+			t.Fatalf("exec %q: %v", expr, err)
+		}
+		return len(rows)
+	}
+	// 空格字符串（引号整段读取）
+	if n := exec(`(like $title "%hello world%")`); n != 1 {
+		t.Fatalf("空格字符串: %d", n)
+	}
+	// 数组字面量 + 标量 IN（全库 status=1: 2 文章 + root/child 分类）
+	if n := exec(`(in status [1 1])`); n != 4 {
+		t.Fatalf("标量 IN 数组: %d", n)
+	}
+	// 字面量数组 + 引用字段
+	if n := exec(`(in ->categories [2 999])`); n != 1 {
+		t.Fatalf("引用 IN 数组: %d", n)
+	}
+	// 空数组 → 永假
+	if n := exec(`(in status [])`); n != 0 {
+		t.Fatalf("空数组: %d", n)
+	}
+	// 入边存在性
+	if n := exec(`(edge <-article)`); n != 1 {
+		t.Fatalf("入边存在: %d", n)
+	}
+	// 入边目标谓词
+	if n := exec(`(edge <-article (= $body "好评"))`); n != 1 {
+		t.Fatalf("入边谓词: %d", n)
+	}
+	// edge 数组目标 → 报错
+	q := s.db.Add(`SELECT * FROM nodes WHERE ${where}`)
+	if _, err := s.CompileLispInto(q, `(edge ->categories [1 2])`, "article", nil); err == nil {
+		t.Fatal("edge 数组目标应报错")
+	}
+	// 引用字段直接比较 → 报错
+	q = s.db.Add(`SELECT * FROM nodes WHERE ${where}`)
+	if _, err := s.CompileLispInto(q, `(= ->categories {:id})`, "article", map[string]any{"id": child}); err == nil {
+		t.Fatal("引用字段直接比较应报错")
+	}
+	// $.name 严格拒绝（不兼容）
+	q = s.db.Add(`SELECT * FROM nodes WHERE ${where}`)
+	if _, err := s.CompileLispInto(q, `(= $.featured true)`, "article", nil); err == nil {
+		t.Fatal("$. 前缀应报错（严格 $name）")
 	}
 }

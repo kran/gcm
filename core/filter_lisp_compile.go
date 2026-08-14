@@ -11,6 +11,14 @@ package core
 //	顶层: q.Add(top) → q.ToSQL() → (where, args)
 //
 // 构建起点 = s.db（var 注册 copy-on-write — 原库不受影响）。
+//
+// 语法（2026-08 定案）:
+//
+//	取值:    status(列) / $label(JSON) / ->categories(出边) / <-comments(入边)
+//	数组:    [1 2 3] 字面量 / {:args} 占位符
+//	引用:    (edge 字段 目标) — 一元=存在性; 目标=值(折叠)/谓词(开层)
+//	集合:    (in 字段 集合) — 字段=列(标量 IN)/引用(边 EXISTS)
+//	谓词:    比较 = != > < like / 逻辑 and or not / edge / in
 
 import (
 	"fmt"
@@ -26,7 +34,9 @@ type lispCompiler struct {
 	q       *dba.SQL
 	varSeq  int
 	td      *types.TypeDef
-	nodeRef string // "nodes" 顶层; 穿透段 = "t{i}"
+	nodeRef string // 列引用的表别名: "nodes" 顶层; edge 开层 = "t{i}"
+	link    string // 边查询的链接列来源: "nodes.id" 顶层; 开层 = "t{i}.id"
+	depth   int    // edge 开层层级（别名 e{i}/t{i}）
 	params  map[string]any
 }
 
@@ -35,8 +45,6 @@ type lispCompiler struct {
 type LispFuncC func(args []lispExpr) (string, []any, error)
 
 // RegisterLispFuncC 注册自定义 Lisp filter 函数（站点扩展; 重复注册 panic）。
-// 函数签名 func(args []lispExpr) (string, error) — 需要访问 Service/上下文时
-// 用闭包捕获（注册时 svc 在作用域）。
 func (s *Service) RegisterLispFuncC(name string, fn LispFuncC) {
 	if _, dup := s.lispFuncsC[name]; dup {
 		panic(fmt.Sprintf("core: lisp func %q already registered", name))
@@ -56,7 +64,7 @@ func (s *Service) CompileLispInto(q *dba.SQL, expr, typeName string, params map[
 	if !ok {
 		return nil, fmt.Errorf("core: type %q not defined", typeName)
 	}
-	c := &lispCompiler{svc: s, q: q, td: &td, nodeRef: "nodes", params: params}
+	c := &lispCompiler{svc: s, q: q, td: &td, nodeRef: "nodes", link: "nodes.id", params: params}
 	if e.head == "" {
 		return nil, fmt.Errorf("filter-lisp: top-level must be a call")
 	}
@@ -90,9 +98,7 @@ func (c *lispCompiler) funcs() map[string]LispFuncC {
 	m["and"] = wrap(c.andFn)
 	m["or"] = wrap(c.orFn)
 	m["not"] = wrap(c.notFn)
-	m["->"] = wrap(func(args []lispExpr) (string, error) { return c.refCmp(false, args) })
-	m["<-"] = wrap(func(args []lispExpr) (string, error) { return c.refCmp(true, args) })
-	m["get"] = wrap(c.throughFn)
+	m["edge"] = wrap(c.edgeFn)
 	m["in"] = wrap(c.inFn)
 	m["subtree"] = wrap(c.subtreeFn)
 	// 站点注册函数（覆盖内置? 不 — 重复注册 panic; 合并）
@@ -119,7 +125,7 @@ func sqlOp(op string) string {
 }
 
 // call 编译子表达式（注册表查找; 返回片段 + 直接参数）。
-// 函数是黑盒: 调用前后保存/恢复宿主上下文（get 等会临时切换 td/nodeRef,
+// 函数是黑盒: 调用前后保存/恢复宿主上下文（edge 等会临时切换 td/nodeRef/link,
 // 不得泄漏到同层后续表达式）。
 func (c *lispCompiler) call(e lispExpr) (string, []any, error) {
 	if e.head == "" {
@@ -129,9 +135,9 @@ func (c *lispCompiler) call(e lispExpr) (string, []any, error) {
 	if !ok {
 		return "", nil, fmt.Errorf("filter-lisp: unknown function %q", e.head)
 	}
-	origTd, origRef := c.td, c.nodeRef
+	origTd, origRef, origLink := c.td, c.nodeRef, c.link
 	frag, args, err := fn(e.args)
-	c.td, c.nodeRef = origTd, origRef
+	c.td, c.nodeRef, c.link = origTd, origRef, origLink
 	return frag, args, err
 }
 
@@ -154,7 +160,41 @@ func pathOfC(v lispExpr) (string, error) {
 	return p, nil
 }
 
-// refTarget 宿主类型里引用字段的目标类型。
+// fieldKind 字段类别: 列 / JSON / 出边引用 / 入边引用。
+type fieldKind int
+
+const (
+	fieldCol fieldKind = iota
+	fieldJSON
+	fieldOut
+	fieldIn
+)
+
+// fieldOf 解析字段 token 的前缀:
+//
+//	无前缀 = 列       status
+//	$name  = JSON     $label（兼容 $.label）
+//	->name = 出边引用  ->categories
+//	<-name = 入边引用  <-comments
+func fieldOf(path string) (kind fieldKind, name string) {
+	switch {
+	case strings.HasPrefix(path, "->"):
+		return fieldOut, strings.TrimPrefix(path, "->")
+	case strings.HasPrefix(path, "<-"):
+		return fieldIn, strings.TrimPrefix(path, "<-")
+	case strings.HasPrefix(path, "$"):
+		// $name — 严格形态; $.name 报错（name 含点, 字段查不到）
+		return fieldJSON, strings.TrimPrefix(path, "$")
+	}
+	return fieldCol, path
+}
+
+// jsonPath $name → JSON 提取路径（$.name）。
+func jsonPath(name string) string {
+	return "$." + name
+}
+
+// refTarget 出边: 宿主类型里引用字段的目标类型（->name 必须宿主声明）。
 func (c *lispCompiler) refTarget(field string) (string, error) {
 	for _, f := range c.td.Fields {
 		if f.Name == field && c.svc.types.IsRefKind(f.Kind) {
@@ -164,9 +204,22 @@ func (c *lispCompiler) refTarget(field string) (string, error) {
 	return "", fmt.Errorf("filter-lisp: %q not a ref field on %q", field, c.td.Name)
 }
 
+// inTarget 入边: 全类型表找声明 field ref to 当前宿主的来源类型（<-name
+// 被指向方无需声明 — 边字段在来源类型上）。
+func (c *lispCompiler) inTarget(field string) (string, error) {
+	for _, td := range c.svc.types.Defs() {
+		for _, f := range td.Fields {
+			if f.Name == field && c.svc.types.IsRefKind(f.Kind) && f.To == c.td.Name {
+				return td.Name, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("filter-lisp: no type declares ref %q to %q", field, c.td.Name)
+}
+
 // ── 函数实现 ─────────────────────────────────────
 
-// cmp 比较: 列/JSON（nodeRef 相对当前节点）。
+// cmp 比较: 列/JSON（nodeRef 相对当前节点）。引用字段直接比较 → 报错提示。
 func (c *lispCompiler) cmp(op string, args []lispExpr) (string, error) {
 	if len(args) != 2 {
 		return "", fmt.Errorf("filter-lisp: %s takes 2 args", op)
@@ -179,17 +232,22 @@ func (c *lispCompiler) cmp(op string, args []lispExpr) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if strings.HasPrefix(path, "$.") {
-		field := strings.TrimPrefix(path, "$.")
-		if !c.isScalar(field) {
-			return "", fmt.Errorf("filter-lisp: field %q not scalar on %q", field, c.td.Name)
+	kind, name := fieldOf(path)
+	switch kind {
+	case fieldJSON:
+		if !c.isScalar(name) {
+			return "", fmt.Errorf("filter-lisp: field %q not scalar on %q", name, c.td.Name)
 		}
-		return c.varRef("json_extract("+c.nodeRef+".fields, #{1}) "+sqlOp(op)+" #{2}", "$."+field, val), nil
+		return c.varRef("json_extract("+c.nodeRef+".fields, #{1}) "+sqlOp(op)+" #{2}", jsonPath(name), val), nil
+	case fieldCol:
+		if types.IsNodeColumn(name) {
+			return c.varRef(c.nodeRef+".#{1|quote} "+sqlOp(op)+" #{2}", name, val), nil
+		}
+		return "", fmt.Errorf("filter-lisp: %q is not a column of nodes", name)
+	case fieldOut, fieldIn:
+		return "", fmt.Errorf("filter-lisp: ref field %q needs edge/in, not %s", name, op)
 	}
-	if types.IsNodeColumn(path) {
-		return c.varRef(c.nodeRef+".#{1|quote} "+sqlOp(op)+" #{2}", path, val), nil
-	}
-	return "", fmt.Errorf("filter-lisp: %q neither $.field nor column", path)
+	return "", fmt.Errorf("filter-lisp: %q neither column nor $.field", path)
 }
 
 func (c *lispCompiler) isScalar(name string) bool {
@@ -227,82 +285,58 @@ func (c *lispCompiler) logical(sep string, args []lispExpr) (string, error) {
 	return c.varRef("(" + strings.Join(parts, sep) + ")"), nil
 }
 
-// refCmp: -> 出边 / <- 入边（<- 一元 = 存在性）。
-func (c *lispCompiler) refCmp(in bool, args []lispExpr) (string, error) {
-	if in && len(args) == 1 {
-		field, _ := pathOfC(args[0])
-		return c.varRef("EXISTS(SELECT 1 FROM edges WHERE field = #{1} AND to_node = nodes.id)", field), nil
+// edgeFn: (edge 字段) 存在性 / (edge 字段 目标) — 目标=值(折叠) 或 谓词(开层)。
+// 方向由字段前缀决定: ->name 出边 / <-name 入边。
+func (c *lispCompiler) edgeFn(args []lispExpr) (string, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return "", fmt.Errorf("filter-lisp: edge takes 1 or 2 args")
 	}
-	if len(args) != 2 {
-		return "", fmt.Errorf("filter-lisp: ref takes 2 args")
-	}
-	field, _ := pathOfC(args[0])
-	val, err := c.valueOf(args[1])
+	path, err := pathOfC(args[0])
 	if err != nil {
 		return "", err
 	}
+	kind, field := fieldOf(path)
+	if kind != fieldOut && kind != fieldIn {
+		return "", fmt.Errorf("filter-lisp: edge needs ref field with -> or <- prefix, got %q", path)
+	}
+	in := kind == fieldIn
 	if in {
-		return c.varRef("EXISTS(SELECT 1 FROM edges WHERE field = #{1} AND to_node = nodes.id AND from_node = #{2})", field, val), nil
-	}
-	return c.varRef("EXISTS(SELECT 1 FROM edges WHERE field = #{1} AND from_node = nodes.id AND to_node = #{2})", field, val), nil
-}
-
-// throughFn: 穿透（段表达式递归 — var 链嵌套）。
-func (c *lispCompiler) throughFn(args []lispExpr) (string, error) {
-	if len(args) < 2 {
-		return "", fmt.Errorf("filter-lisp: get takes segments + target comparison")
-	}
-	segs := args
-	var targetCmp lispExpr
-	last := args[len(args)-1]
-	if last.head == "" {
-		// 原子兼容: (get 段... 字段 值)
-		if len(args) < 3 {
-			return "", fmt.Errorf("filter-lisp: get needs target comparison")
-		}
-		val, err := c.valueOf(args[len(args)-1])
-		if err != nil {
+		if _, err := c.inTarget(field); err != nil {
 			return "", err
 		}
-		targetCmp = lispExpr{head: "=", args: []lispExpr{args[len(args)-2], {atom: val}}}
-		segs = args[:len(args)-2]
-	} else {
-		targetCmp = last
-		segs = args[:len(args)-1]
-	}
-	return c.throughRec(segs, targetCmp, 0, "nodes.id")
-}
-
-// throughRec: 每段一层 EXISTS var; 段条件/目标比较 = 内嵌 var 引用。
-func (c *lispCompiler) throughRec(segs []lispExpr, targetCmp lispExpr, i int, link string) (string, error) {
-	segExpr := segs[i]
-	if segExpr.head == "" {
-		return "", fmt.Errorf("filter-lisp: through segment must be (-> field) or (<- field [cond])")
-	}
-	in := segExpr.head == "<-"
-	if segExpr.head != "->" && segExpr.head != "<-" {
-		return "", fmt.Errorf("filter-lisp: through segment direction must be -> or <-")
-	}
-	segName, _ := pathOfC(segExpr.args[0])
-
-	// 宿主切换: 本段宿主 = 前段引用目标（段0 = c.td）
-	if i > 0 {
-		prev, _ := pathOfC(segs[i-1].args[0])
-		to, err := c.refTarget(prev)
-		if err != nil {
-			return "", err
-		}
-		htd, ok := c.svc.types.Type(to)
-		if !ok {
-			return "", fmt.Errorf("filter-lisp: type %q not defined", to)
-		}
-		c.td = &htd
-	}
-	if _, err := c.refTarget(segName); err != nil {
+	} else if _, err := c.refTarget(field); err != nil {
 		return "", err
 	}
-	// 段目标类型（条件/末比较的宿主）
-	to, err := c.refTarget(segName)
+	joinCol, linkCol := "to_node", "from_node"
+	if in {
+		joinCol, linkCol = "from_node", "to_node"
+	}
+
+	// 一元: 存在性（无 JOIN）
+	if len(args) == 1 {
+		return c.varRef("EXISTS(SELECT 1 FROM edges WHERE field = #{1} AND "+linkCol+" = "+c.link+")", field), nil
+	}
+
+	target := args[1]
+	if target.head == "" {
+		// 值 → 折叠（目标身份比较, 无 JOIN）; 数组 → 报错提示 in
+		val, err := c.valueOf(target)
+		if err != nil {
+			return "", err
+		}
+		if _, isArr := val.([]any); isArr {
+			return "", fmt.Errorf("filter-lisp: edge target is an array, use in for collections")
+		}
+		return c.varRef("EXISTS(SELECT 1 FROM edges WHERE field = #{1} AND "+linkCol+" = "+c.link+" AND "+joinCol+" = #{2})", field, val), nil
+	}
+
+	// 谓词 → 开层: 宿主切换到目标类型（目标谓词在 t{i} 下编译）
+	var to string
+	if in {
+		to, err = c.inTarget(field)
+	} else {
+		to, err = c.refTarget(field)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -310,80 +344,141 @@ func (c *lispCompiler) throughRec(segs []lispExpr, targetCmp lispExpr, i int, li
 	if !ok {
 		return "", fmt.Errorf("filter-lisp: type %q not defined", to)
 	}
-
-	joinCol, linkCol := "to_node", "from_node"
-	if in {
-		joinCol, linkCol = "from_node", "to_node"
+	c.depth++
+	alias := fmt.Sprintf("e%d", c.depth)
+	tAlias := fmt.Sprintf("t%d", c.depth)
+	origTd, origRef, origLink := c.td, c.nodeRef, c.link
+	c.td, c.nodeRef, c.link = &htd, tAlias, tAlias+".id"
+	frag, _, err := c.call(target)
+	c.td, c.nodeRef, c.link = origTd, origRef, origLink
+	c.depth--
+	if err != nil {
+		return "", err
 	}
-
-	// 中间条件（段表达式第 2 参）
-	condRef := ""
-	if len(segExpr.args) >= 2 {
-		origTd, origRef := c.td, c.nodeRef
-		c.td = &htd
-		c.nodeRef = fmt.Sprintf("t%d", i+1)
-		frag, _, err := c.call(segExpr.args[1])
-		c.td, c.nodeRef = origTd, origRef
-		if err != nil {
-			return "", err
-		}
-		condRef = frag // 已是 ${eN} 引用
-	}
-
-	// 递归下一段或目标比较
-	var inner string
-	if i == len(segs)-1 {
-		origTd, origRef := c.td, c.nodeRef
-		c.td = &htd
-		c.nodeRef = fmt.Sprintf("t%d", i+1)
-		frag, _, err := c.call(targetCmp)
-		c.td, c.nodeRef = origTd, origRef
-		if err != nil {
-			return "", err
-		}
-		inner = frag
-	} else {
-		var err error
-		inner, err = c.throughRec(segs, targetCmp, i+1, fmt.Sprintf("t%d.id", i+1))
-		if err != nil {
-			return "", err
-		}
-	}
-	// 本段 EXISTS var: 参数只有字段名（条件/内层是 ${eN} 引用 — 参数在各自 var）
-	frag := fmt.Sprintf("EXISTS(SELECT 1 FROM edges e%d JOIN nodes t%d ON t%d.id = e%d.%s WHERE e%d.field = #{1} AND e%d.%s = %s", i+1, i+1, i+1, i+1, joinCol, i+1, i+1, linkCol, link)
-	if condRef != "" {
-		frag += " AND " + condRef
-	}
-	frag += " AND " + inner + ")"
-	return c.varRef(frag, segName), nil
+	fragOut := fmt.Sprintf("EXISTS(SELECT 1 FROM edges %s JOIN nodes %s ON %s.id = %s.%s WHERE %s.field = #{1} AND %s.%s = %s AND %s)",
+		alias, tAlias, tAlias, alias, joinCol, alias, alias, linkCol, c.link, frag)
+	return c.varRef(fragOut, field), nil
 }
 
-// inFn: (in 字段 集合) — 集合 = 占位符数组 {:ids} 或集合函数 (subtree ...)。
+// inFn: (in 字段 集合) — 字段=列/JSON(标量 IN) 或 引用(边 EXISTS, 方向看前缀)。
+// 集合 = 数组字面量 [..] / 占位符数组 {:ids} / 集合函数 (subtree ..)。
 func (c *lispCompiler) inFn(args []lispExpr) (string, error) {
 	if len(args) != 2 {
 		return "", fmt.Errorf("filter-lisp: in takes 2 args")
 	}
-	field, _ := pathOfC(args[0])
-	// 形态一: 占位符数组 (in categories {:ids}) — params 绑定数组 → expand
-	if p, ok := args[1].atom.(placeholder); ok {
-		val, err := valueParam(p, c.params)
-		if err != nil {
-			return "", err
-		}
-		return c.varRef("EXISTS(SELECT 1 FROM edges WHERE field = #{1} AND from_node = nodes.id AND to_node IN (#{2|expand}))", field, val), nil
-	}
-	// 形态二: 集合函数 (in categories (subtree "root")) — 返回 id 切片参数
-	setRef, setArgs, err := c.call(args[1])
+	path, err := pathOfC(args[0])
 	if err != nil {
 		return "", err
 	}
-	if len(setArgs) > 0 {
-		// 自定义函数直接参数（id 切片）— 拼 expand
-		allArgs := append([]any{field}, setArgs...)
-		return c.varRef("EXISTS(SELECT 1 FROM edges WHERE field = #{1} AND from_node = nodes.id AND to_node IN (#{2|expand}))", allArgs...), nil
+	kind, field := fieldOf(path)
+	if kind == fieldCol && !types.IsNodeColumn(field) {
+		return "", fmt.Errorf("filter-lisp: %q is not a column of nodes", field)
 	}
-	// subtree: ${eN} 引用（其 var 含 id 切片参数）— 直接引用
-	return c.varRef("EXISTS(SELECT 1 FROM edges WHERE field = #{1} AND from_node = nodes.id AND to_node IN ("+setRef+"))", field), nil
+	if kind == fieldJSON && !c.isScalar(field) {
+		return "", fmt.Errorf("filter-lisp: field %q not scalar on %q", field, c.td.Name)
+	}
+
+	// 集合形态一: 数组字面量 [1 2 3] 或占位符绑定数组（元素解析占位符）
+	if arr, ok := c.arrayValue(args[1]); ok {
+		return c.varRef(c.inSQL(kind, field, arr), c.inArgs(kind, field, arr)...), nil
+	}
+	// 集合形态二: 集合函数 (subtree "root") / 自定义 — 返回 id 切片参数
+	if args[1].head != "" {
+		setRef, setArgs, err := c.call(args[1])
+		if err != nil {
+			return "", err
+		}
+		if len(setArgs) > 0 {
+			// 自定义函数直接参数（id 切片）— 拼 expand
+			allArgs := append([]any{c.inFieldArg(kind, field)}, setArgs...)
+			return c.varRef(c.inSQLRef(kind, field, "#{2|expand}"), allArgs...), nil
+		}
+		// subtree: ${eN} 引用（其 var 含 id 切片参数）— 直接引用
+		if kind != fieldOut && kind != fieldIn {
+			return "", fmt.Errorf("filter-lisp: subtree set is node ids, use with ref field (->name)")
+		}
+		return c.varRef(c.inSQLRef(kind, field, setRef), c.inFieldArg(kind, field)), nil
+	}
+	// 单值原子（非数组）: (in status 5) → 单元素集合
+	val, err := c.valueOf(args[1])
+	if err != nil {
+		return "", err
+	}
+	arr := []any{val}
+	return c.varRef(c.inSQL(kind, field, arr), c.inArgs(kind, field, arr)...), nil
+}
+
+// arrayValue 数组字面量 [..] / 占位符绑定数组 → ([]any, true); 否则 (nil, false)。
+func (c *lispCompiler) arrayValue(e lispExpr) ([]any, bool) {
+	if e.head != "" {
+		return nil, false
+	}
+	switch v := e.atom.(type) {
+	case []any:
+		out := make([]any, len(v))
+		for i, item := range v {
+			if p, ok := item.(placeholder); ok {
+				val, err := valueParam(p, c.params)
+				if err != nil {
+					return nil, false
+				}
+				out[i] = val
+			} else {
+				out[i] = item
+			}
+		}
+		return out, true
+	case placeholder:
+		val, err := valueParam(v, c.params)
+		if err != nil {
+			return nil, false
+		}
+		if arr, ok := val.([]any); ok {
+			return arr, true
+		}
+		return nil, false
+	}
+	return nil, false
+}
+
+// inFieldArg 集合片段 #{1} 的参数（字段名 / JSON 路径）。
+func (c *lispCompiler) inFieldArg(kind fieldKind, field string) any {
+	if kind == fieldJSON {
+		return jsonPath(field)
+	}
+	return field
+}
+
+// inArgs 数组形态参数: [#{1} 字段, #{2|expand} 数组]。
+func (c *lispCompiler) inArgs(kind fieldKind, field string, arr []any) []any {
+	return []any{c.inFieldArg(kind, field), arr}
+}
+
+// inSQL 标量/引用字段的 IN 片段（数组参数 → expand）。
+func (c *lispCompiler) inSQL(kind fieldKind, field string, arr []any) string {
+	if len(arr) == 0 {
+		return "1 = 0" // 空集合永假
+	}
+	switch kind {
+	case fieldCol:
+		return c.nodeRef + ".#{1|quote} IN (#{2|expand})"
+	case fieldJSON:
+		return "json_extract(" + c.nodeRef + ".fields, #{1}) IN (#{2|expand})"
+	case fieldOut:
+		return "EXISTS(SELECT 1 FROM edges WHERE field = #{1} AND from_node = " + c.link + " AND to_node IN (#{2|expand}))"
+	case fieldIn:
+		return "EXISTS(SELECT 1 FROM edges WHERE field = #{1} AND to_node = " + c.link + " AND from_node IN (#{2|expand}))"
+	}
+	return ""
+}
+
+// inSQLRef 集合函数形态（引用字段 — 集合是节点 id）; 标量字段拒绝对照。
+func (c *lispCompiler) inSQLRef(kind fieldKind, field, setRef string) string {
+	joinCol, linkCol := "to_node", "from_node"
+	if kind == fieldIn {
+		joinCol, linkCol = "from_node", "to_node"
+	}
+	return "EXISTS(SELECT 1 FROM edges WHERE field = #{1} AND " + linkCol + " = " + c.link + " AND " + joinCol + " IN (" + setRef + "))"
 }
 
 // subtreeFn: (subtree "slug") — 返回 id 列表（参数传给 in 的 expand）。

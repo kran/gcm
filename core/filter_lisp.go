@@ -81,6 +81,29 @@ func (p *lispParser) parseExpr() (lispExpr, error) {
 		return e, nil
 	case c == ')':
 		return lispExpr{}, fmt.Errorf("filter-lisp: unexpected )")
+	case c == '[':
+		// 数组字面量 [1 2 3] / ["a" "b"] — 元素为原子（值/占位符）
+		p.pos++
+		var items []any
+		for {
+			p.skipWS()
+			if p.pos >= len(p.src) {
+				return lispExpr{}, fmt.Errorf("filter-lisp: unterminated [")
+			}
+			if p.src[p.pos] == ']' {
+				p.pos++
+				break
+			}
+			item, err := p.parseExpr()
+			if err != nil {
+				return lispExpr{}, err
+			}
+			if item.head != "" {
+				return lispExpr{}, fmt.Errorf("filter-lisp: array element must be a value, got (%s ...)", item.head)
+			}
+			items = append(items, item.atom)
+		}
+		return lispExpr{atom: items}, nil
 	default:
 		tok, err := p.parseToken()
 		if err != nil {
@@ -93,9 +116,21 @@ func (p *lispParser) parseExpr() (lispExpr, error) {
 func (p *lispParser) parseToken() (string, error) {
 	p.skipWS()
 	start := p.pos
+	if p.pos < len(p.src) && p.src[p.pos] == '"' {
+		// 引号字符串: 整段读到配对引号（含空格/括号）
+		p.pos++
+		for p.pos < len(p.src) && p.src[p.pos] != '"' {
+			p.pos++
+		}
+		if p.pos >= len(p.src) {
+			return "", fmt.Errorf("filter-lisp: unterminated string at %d", start)
+		}
+		p.pos++ // 闭引号
+		return p.src[start:p.pos], nil
+	}
 	for p.pos < len(p.src) {
 		c := p.src[p.pos]
-		if c == ' ' || c == '\t' || c == '\n' || c == '(' || c == ')' {
+		if c == ' ' || c == '\t' || c == '\n' || c == '(' || c == ')' || c == '[' || c == ']' {
 			break
 		}
 		p.pos++

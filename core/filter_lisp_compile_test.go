@@ -35,17 +35,17 @@ func TestLispCompileV(t *testing.T) {
 	}
 
 	check(`(and (= type "article") (= status 1))`, 2)
-	check(`(= $.featured true)`, 1)
-	check(`(and (= status 1) (= $.featured true))`, 1)
-	check(`(not (= $.featured true))`, 1)
+	check(`(= $featured true)`, 1)
+	check(`(and (= status 1) (= $featured true))`, 1)
+	check(`(not (= $featured true))`, 1)
 	// 占位符
-	rows := exec(`(-> categories {:id})`, map[string]any{"id": child})
+	rows := exec(`(edge ->categories {:id})`, map[string]any{"id": child})
 	if len(rows) != 1 {
 		t.Fatalf("placeholder ref: %d", len(rows))
 	}
-	check(`(in categories (subtree "root"))`, 1)
-	check(`(get (-> categories) (-> parent) $.name "根")`, 1)
-	check(`(get (-> categories) (-> parent (= status 1)) $.name "根")`, 1)
+	check(`(in ->categories (subtree "root"))`, 1)
+	check(`(edge ->categories (edge ->parent (= $name "根")))`, 1)
+	check(`(edge ->categories (edge ->parent (and (= status 1) (= $name "根"))))`, 1)
 }
 
 // ListQ 结构化查询: base SQL 模板 + ${where} 槽（Lisp 编译挂载）+ 分页/排序。
@@ -57,7 +57,7 @@ func TestLispListQ(t *testing.T) {
 	s.CreateNode(&Node{Type: "article", Status: StatusPublished, Sort: 2, Fields: Fields{"title": "乙", "categories": []any{root}}})
 
 	// Filter（Lisp）+ 分页
-	list, total, err := s.ListQ(ListQuery{Type: "article", Filter: `(in categories (subtree "root"))`, Page: 1, Size: 10})
+	list, total, err := s.ListQ(ListQuery{Type: "article", Filter: `(in ->categories (subtree "root"))`, Page: 1, Size: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
