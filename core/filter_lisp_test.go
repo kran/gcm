@@ -59,7 +59,7 @@ func TestLispRegisterFunc(t *testing.T) {
 		if cat == nil {
 			return "", nil, errTestSlug(slug)
 		}
-		ids, _ := s.Subtree(cat.ID, "parent", 20)
+		ids, _ := s.Subtree(cat.Type, cat.ID, "parent", 20)
 		ids = append([]int64{cat.ID}, ids...)
 		anyIDs := make([]any, len(ids))
 		for i, id := range ids {

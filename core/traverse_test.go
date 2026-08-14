@@ -35,7 +35,7 @@ func TestTraverseUp(t *testing.T) {
 	root, a, b := buildTree(t, s)
 
 	// b 向上: [a, root]
-	got, err := s.Traverse(b, "parent", 10)
+	got, err := s.Traverse("category", b, "parent", 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,12 +43,12 @@ func TestTraverseUp(t *testing.T) {
 		t.Fatalf("traverse b: %v", got)
 	}
 	// a 向上: [root]
-	got, _ = s.Traverse(a, "parent", 10)
+	got, _ = s.Traverse("category", a, "parent", 10)
 	if !reflect.DeepEqual(got, []int64{root}) {
 		t.Fatalf("traverse a: %v", got)
 	}
 	// root 向上: 空
-	got, _ = s.Traverse(root, "parent", 10)
+	got, _ = s.Traverse("category", root, "parent", 10)
 	if len(got) != 0 {
 		t.Fatalf("traverse root: %v", got)
 	}
@@ -58,7 +58,7 @@ func TestSubtreeDown(t *testing.T) {
 	s := newTraverseService(t)
 	root, a, b := buildTree(t, s)
 
-	got, err := s.Subtree(root, "parent", 10)
+	got, err := s.Subtree("category", root, "parent", 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,12 +66,12 @@ func TestSubtreeDown(t *testing.T) {
 		t.Fatalf("subtree root: %v", got)
 	}
 	// a 的子树: [b]
-	got, _ = s.Subtree(a, "parent", 10)
+	got, _ = s.Subtree("category", a, "parent", 10)
 	if !reflect.DeepEqual(got, []int64{b}) {
 		t.Fatalf("subtree a: %v", got)
 	}
 	// b 无子树
-	got, _ = s.Subtree(b, "parent", 10)
+	got, _ = s.Subtree("category", b, "parent", 10)
 	if len(got) != 0 {
 		t.Fatalf("subtree b: %v", got)
 	}
@@ -82,12 +82,12 @@ func TestTraverseMaxHops(t *testing.T) {
 	_, a, b := buildTree(t, s)
 
 	// 1 跳: 只到 a
-	got, _ := s.Traverse(b, "parent", 1)
+	got, _ := s.Traverse("category", b, "parent", 1)
 	if !reflect.DeepEqual(got, []int64{a}) {
 		t.Fatalf("1 hop: %v", got)
 	}
 	// 子树 1 跳: root 只到 a
-	got, _ = s.Subtree(a, "parent", 1)
+	got, _ = s.Subtree("category", a, "parent", 1)
 	if !reflect.DeepEqual(got, []int64{b}) {
 		t.Fatalf("subtree 1 hop: %v", got)
 	}
@@ -103,7 +103,7 @@ func TestEquivalenceClass(t *testing.T) {
 	s.AddEdge(x, y, "synonym", 0)
 	s.AddEdge(y, z, "synonym", 0)
 
-	got, err := s.EquivalenceClass(y, "synonym", 10)
+	got, err := s.EquivalenceClass("category", y, "synonym", 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestEquivalenceClass(t *testing.T) {
 		t.Fatalf("class y: %v, want %v", got, want)
 	}
 	// 孤立节点: 只有自己
-	got, _ = s.EquivalenceClass(alone, "synonym", 10)
+	got, _ = s.EquivalenceClass("category", alone, "synonym", 10)
 	if !reflect.DeepEqual(got, []int64{alone}) {
 		t.Fatalf("class alone: %v", got)
 	}
@@ -126,7 +126,7 @@ func TestTraverseCycle(t *testing.T) {
 	s.AddEdge(a, b, "parent", 0)
 	s.AddEdge(b, a, "parent", 0) // 环
 
-	got, err := s.Traverse(a, "parent", 5)
+	got, err := s.Traverse("category", a, "parent", 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestTraverseCycle(t *testing.T) {
 		t.Fatalf("cycle traverse: %v", got)
 	}
 	// 等价类（双向遍历）在环上也安全: 用 parent 字段双向展开
-	got, err = s.EquivalenceClass(a, "parent", 10)
+	got, err = s.EquivalenceClass("category", a, "parent", 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,15 +148,15 @@ func TestTraverseCycle(t *testing.T) {
 func TestTraverseValidation(t *testing.T) {
 	s := newTraverseService(t)
 	root, _, _ := buildTree(t, s)
-	if _, err := s.Traverse(root, "ghost", 10); err == nil {
+	if _, err := s.Traverse("category", root, "ghost", 10); err == nil {
 		t.Fatal("unknown field must fail")
 	}
-	if _, err := s.Traverse(root, "name", 10); err == nil {
+	if _, err := s.Traverse("category", root, "name", 10); err == nil {
 		t.Fatal("non-ref field must fail")
 	}
 	// 节点不存在: 宽松后静默空（CTE 返回空 — 不查节点校验）;
 	// 字段拼错仍 fail-loud（全局字段校验保留）
-	ids, err := s.Subtree(999, "parent", 10)
+	ids, err := s.Subtree("category", 999, "parent", 10)
 	if err != nil || len(ids) != 0 {
 		t.Fatalf("missing start: ids=%v err=%v (宽松: 静默空)", ids, err)
 	}
@@ -171,11 +171,11 @@ func TestAncestorsDepthOrder(t *testing.T) {
 	mid, _ := s.CreateNode(&Node{Type: "category", Slug: "mid", Fields: Fields{"name": "中", "parent": top}})
 	leaf, _ := s.CreateNode(&Node{Type: "category", Slug: "leaf", Fields: Fields{"name": "叶", "parent": mid}})
 	// Traverse(id 序) 与 Ancestors(深度序) 对照
-	tr, err := s.Traverse(leaf, "parent", 20)
+	tr, err := s.Traverse("category", leaf, "parent", 20)
 	if err != nil {
 		t.Fatal(err)
 	}
-	anc, err := s.Ancestors(leaf, "parent", 20)
+	anc, err := s.Ancestors("category", leaf, "parent", 20)
 	if err != nil {
 		t.Fatal(err)
 	}

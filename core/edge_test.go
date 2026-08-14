@@ -44,7 +44,7 @@ func TestOutInRefs(t *testing.T) {
 	a2, _ := s.CreateNode(&Node{Type: "article", Fields: Fields{"body": "2", "authors": []any{p1}}})
 
 	// 出边: a1 有 2 条 authors
-	out, total, err := s.OutEdges(a1, "authors", 1, 10)
+	out, total, err := s.OutEdges("article", a1, "authors", 1, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,12 +64,12 @@ func TestOutInRefs(t *testing.T) {
 		t.Fatalf("p2 inbound: %d", total)
 	}
 	// 分页: 每页 1 条
-	_, total, _ = s.OutEdges(a1, "authors", 2, 1)
+	_, total, _ = s.OutEdges("article", a1, "authors", 2, 1)
 	if total != 2 {
 		t.Fatalf("page total: %d", total)
 	}
 	// a2 出边 1 条
-	if _, total, _ = s.OutEdges(a2, "authors", 1, 10); total != 1 {
+	if _, total, _ = s.OutEdges("article", a2, "authors", 1, 10); total != 1 {
 		t.Fatalf("a2 authors: %d", total)
 	}
 }
@@ -92,12 +92,12 @@ types:
 		t.Fatal(err)
 	}
 	// a1 的 OutEdges 双向命中
-	out, total, _ := s.OutEdges(a1, "related", 1, 10)
+	out, total, _ := s.OutEdges("article", a1, "related", 1, 10)
 	if total != 1 || len(out) != 1 {
 		t.Fatalf("a1 out: total=%d len=%d", total, len(out))
 	}
 	// a2 的 OutEdges 也命中（反向）
-	out2, total2, _ := s.OutEdges(a2, "related", 1, 10)
+	out2, total2, _ := s.OutEdges("article", a2, "related", 1, 10)
 	if total2 != 1 || len(out2) != 1 || out2[0].FromNode != a1 {
 		t.Fatalf("a2 out: total=%d len=%d from=%d", total2, len(out2), out2[0].FromNode)
 	}
@@ -142,7 +142,7 @@ func TestMerge(t *testing.T) {
 	if err := s.Merge(cFrom, cTo); err != nil {
 		t.Fatalf("Merge: %v", err)
 	}
-	_, total, _ := s.OutEdges(cTo, "parent", 1, 10)
+	_, total, _ := s.OutEdges("category", cTo, "parent", 1, 10)
 	if total != 2 {
 		t.Fatalf("after merge out: %d, want 2 (A dedup + B repointed)", total)
 	}

@@ -128,7 +128,11 @@ func (e *Engine) queryFuncs() template.FuncMap {
 		// outRefs: 出边目标节点列表（symmetric 双向）
 		"outRefs": func(from int64, field string, page, size int) []core.Node {
 			return e.targets(true, func() ([]core.Edge, int64, error) {
-				return svc.OutEdges(from, field, page, size)
+				n, err := svc.GetNodeById(from)
+				if err != nil || n == nil {
+					return nil, 0, fmt.Errorf("outRefs: node %d not found", from)
+				}
+				return svc.OutEdges(n.Type, from, field, page, size)
 			})
 		},
 		// inRefs: 入边来源节点列表（inverse 反向 — 取 from_node 端）
@@ -139,21 +143,15 @@ func (e *Engine) queryFuncs() template.FuncMap {
 		},
 		// traverse: 出边递归（祖先链）
 		"traverse": func(start int64, field string, maxHops int) []int64 {
-			ids, err := svc.Traverse(start, field, maxHops)
-			fail(err)
-			return ids
+			return e.graph(start, field, maxHops, svc.Traverse)
 		},
 		// subtree: 入边递归（子树）
 		"subtree": func(start int64, field string, maxHops int) []int64 {
-			ids, err := svc.Subtree(start, field, maxHops)
-			fail(err)
-			return ids
+			return e.graph(start, field, maxHops, svc.Subtree)
 		},
 		// equivalence: 等价类
 		"equivalence": func(start int64, field string, maxHops int) []int64 {
-			ids, err := svc.EquivalenceClass(start, field, maxHops)
-			fail(err)
-			return ids
+			return e.graph(start, field, maxHops, svc.EquivalenceClass)
 		},
 		// filterList: Lisp filter 筛选列表（表达式 + 分页）。
 		// 用法: {{ filterList "article" "(and (= status 1) (in categories (subtree {:slug})))" (dict "slug" "x") 1 10 }}
@@ -249,6 +247,18 @@ func nodeIDs(nodes []core.Node) []int64 {
 
 // targets 边 → 端点节点列表（保持边序; N+1 顶着, 页面量小毫秒级）。
 // wantTo: 取 to_node（出边目标）; false 取 from_node（入边来源）。
+// graph 模板函数桥: 查节点类型（模板场景只有 id）后转发图原语。
+func (e *Engine) graph(start int64, field string, maxHops int, fn func(string, int64, string, int) ([]int64, error)) []int64 {
+	n, err := e.core.GetNodeById(start)
+	if err != nil || n == nil {
+		fail(fmt.Errorf("graph: node %d not found", start))
+		return nil
+	}
+	ids, err := fn(n.Type, start, field, maxHops)
+	fail(err)
+	return ids
+}
+
 func (e *Engine) targets(wantTo bool, q func() ([]core.Edge, int64, error)) []core.Node {
 	edges, _, err := q()
 	fail(err)

@@ -455,7 +455,7 @@ func (c *lispCompiler) subtreeFn(args []lispExpr) (string, error) {
 	if err != nil || cat == nil {
 		return "", fmt.Errorf("filter-lisp: subtree %q not found", slug)
 	}
-	ids, err := c.svc.Subtree(cat.ID, "parent", 20)
+	ids, err := c.svc.Subtree(cat.Type, cat.ID, "parent", 20)
 	if err != nil {
 		return "", err
 	}

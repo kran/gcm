@@ -110,13 +110,13 @@ func setup(site *web.Site, svc *core.Service) error {
 		if n.Type == "category" {
 			catID = n.ID
 		} else {
-			cats, _, err := svc.OutEdges(n.ID, "categories", 1, 5)
+			cats, _, err := svc.OutEdges(n.Type, n.ID, "categories", 1, 5)
 			if err != nil || len(cats) == 0 {
 				return nil
 			}
 			catID = cats[0].ToNode
 		}
-		chain, err := svc.Traverse(catID, "parent", 50)
+		chain, err := svc.Traverse("category", catID, "parent", 50)
 		if err != nil {
 			return nil
 		}
@@ -290,7 +290,7 @@ func catList(svc *core.Service) ([]core.Node, error) {
 
 // subtreeIDs 分类子树（含自身）。
 func subtreeIDs(svc *core.Service, root int64) ([]int64, error) {
-	ids, err := svc.Subtree(root, "parent", 20)
+	ids, err := svc.Subtree("category", root, "parent", 20)
 	if err != nil {
 		return nil, err
 	}

@@ -169,7 +169,7 @@ func BenchmarkOutRefs(b *testing.B) {
 	svc := benchSvc(b)
 	aid := int64(90000 + 5000 + 1000)
 	for i := 0; i < b.N; i++ {
-		if _, _, err := svc.OutEdges(aid, "authors", 1, 20); err != nil {
+		if _, _, err := svc.OutEdges("article", aid, "authors", 1, 20); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -190,7 +190,7 @@ func BenchmarkInRefs(b *testing.B) {
 func BenchmarkSubtree(b *testing.B) {
 	svc := benchSvc(b)
 	for i := 0; i < b.N; i++ {
-		if _, err := svc.Subtree(1, "parent", 20); err != nil {
+		if _, err := svc.Subtree("category", 1, "parent", 20); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -202,7 +202,7 @@ func BenchmarkListWithRef(b *testing.B) {
 	svc := benchSvc(b)
 	// 子树 id 集合 + 一次 JOIN 内容列表
 	for i := 0; i < b.N; i++ {
-		ids, err := svc.Subtree(1, "parent", 20)
+		ids, err := svc.Subtree("category", 1, "parent", 20)
 		if err != nil {
 			b.Fatal(err)
 		}

@@ -88,9 +88,9 @@ func runScale(sc scale) {
 
 	bench("GetNodeById", func() { svc.GetNodeById(articleID) })
 	bench("List", func() { svc.List("article", core.StatusPublished, 1, 20) })
-	bench("OutEdges", func() { svc.OutEdges(articleID, "authors", 1, 20) })
+	bench("OutEdges", func() { svc.OutEdges("article", articleID, "authors", 1, 20) })
 	bench("InEdges", func() { svc.InEdges(personID, "authors", 1, 20) })
-	bench("Subtree", func() { svc.Subtree(1, "parent", 20) })
+	bench("Subtree", func() { svc.Subtree("category", 1, "parent", 20) })
 	bench("Combo", func() { combo(svc) })
 	fmt.Println()
 }
@@ -109,7 +109,7 @@ func bench(name string, fn func()) {
 
 // combo 组合: 分类子树下的内容（真实分类页写法）。
 func combo(svc *core.Service) {
-	ids, err := svc.Subtree(1, "parent", 20)
+	ids, err := svc.Subtree("category", 1, "parent", 20)
 	if err != nil {
 		return
 	}

@@ -73,8 +73,8 @@ func (s *Service) RemoveEdge(id int64) error {
 
 // OutEdges 出边列表: from 出发、按 field 过滤、分页。
 // symmetric 字段: 双向展开（from=id OR to=id, 存一条查两向）。
-func (s *Service) OutEdges(from int64, field string, page, size int) ([]Edge, int64, error) {
-	_, sym, err := s.refFieldMetaGlobal(field)
+func (s *Service) OutEdges(typeName string, from int64, field string, page, size int) ([]Edge, int64, error) {
+	_, sym, err := s.fieldOnType(typeName, field)
 	if err != nil {
 		return nil, 0, err
 	}
