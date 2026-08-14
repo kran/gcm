@@ -24,6 +24,11 @@ types:
     fields:
       - { name: name, kind: text, required: true }
       - { name: level, kind: text }
+  mention:
+    title: note
+    fields:
+      - { name: note, kind: text }
+      - { name: article, kind: ref, to: article }
   comment:
     title: body
     fields:

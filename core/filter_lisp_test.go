@@ -256,11 +256,11 @@ func TestLispNewSyntax(t *testing.T) {
 		t.Fatalf("空数组: %d", n)
 	}
 	// 入边存在性
-	if n := exec(`(edge <-article)`); n != 1 {
+	if n := exec(`(edge <-comment.article)`); n != 1 {
 		t.Fatalf("入边存在: %d", n)
 	}
 	// 入边目标谓词
-	if n := exec(`(edge <-article (= $body "好评"))`); n != 1 {
+	if n := exec(`(edge <-comment.article (= $body "好评"))`); n != 1 {
 		t.Fatalf("入边谓词: %d", n)
 	}
 	// edge 数组目标 → 报错
@@ -277,5 +277,49 @@ func TestLispNewSyntax(t *testing.T) {
 	q = s.db.Add(`SELECT * FROM nodes WHERE ${where}`)
 	if _, err := s.CompileLispInto(q, `(= $.featured true)`, "article", nil); err == nil {
 		t.Fatal("$. 前缀应报错（严格 $name）")
+	}
+}
+
+// 入边歧义消除: 两个类型声明同名 ref 字段 — <-type.field 显式区分。
+func TestLispInEdgeTypeDisambiguate(t *testing.T) {
+	s := newFilterSvc(t)
+	aid, _ := s.CreateNode(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "甲"}})
+	// comment 和 mention 都声明 article ref to article
+	s.CreateNode(&Node{Type: "comment", Fields: Fields{"body": "评论", "article": aid}})
+	s.CreateNode(&Node{Type: "mention", Fields: Fields{"note": "提及", "article": aid}})
+
+	exec := func(expr string) int {
+		t.Helper()
+		q := s.db.Add(`SELECT * FROM nodes WHERE ${where}`)
+		q, err := s.CompileLispInto(q, expr, "article", nil)
+		if err != nil {
+			t.Fatalf("compile %q: %v", expr, err)
+		}
+		var rows []Node
+		if err := q.List(&rows); err != nil {
+			t.Fatalf("exec %q: %v", expr, err)
+		}
+		return len(rows)
+	}
+	// 裸 <-article 拒绝（身份不完整）
+	q := s.db.Add(`SELECT * FROM nodes WHERE ${where}`)
+	if _, err := s.CompileLispInto(q, `(edge <-article)`, "article", nil); err == nil {
+		t.Fatal("裸入边应报错")
+	}
+	// 类型限定: 各自命中
+	if n := exec(`(edge <-comment.article)`); n != 1 {
+		t.Fatalf("comment 入边: %d", n)
+	}
+	if n := exec(`(edge <-mention.article)`); n != 1 {
+		t.Fatalf("mention 入边: %d", n)
+	}
+	// 谓词在各自类型上编译
+	if n := exec(`(edge <-comment.article (= $body "评论"))`); n != 1 {
+		t.Fatalf("comment 谓词: %d", n)
+	}
+	// mention 类型没有 body 字段 → 报错
+	q = s.db.Add(`SELECT * FROM nodes WHERE ${where}`)
+	if _, err := s.CompileLispInto(q, `(edge <-mention.article (= $body "x"))`, "article", nil); err == nil {
+		t.Fatal("mention 上 $body 应报错")
 	}
 }
