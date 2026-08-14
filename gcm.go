@@ -46,7 +46,7 @@ type SiteSpec[T any] struct {
 	Kinds     []types.Kind
 	Templates string // 模板目录（node--{type}.html 级联根）
 	Static    string // 静态资源目录（可空 = 不挂 /static）
-	Uploads   string // 上传目录（可空 = 不上传; admin.Mount 时挂 /uploads）
+	Uploads   string // 上传目录（可空 = 不上传; 装配层挂 /uploads 服务 + admin 写入）
 	// PageDataMaker 页面上下文构造（站点自定义形态; nil = 无 Page 数据）—
 	// 模板 .Page.X 访问站点自己定义的字段/方法。
 	PageDataMaker func(svc *core.Service, ctx *web.CmsCtx, node *core.Node) T
@@ -83,28 +83,77 @@ func NewApp[T any](opts Options, spec SiteSpec[T]) (*App[T], error) {
 	return app, nil
 }
 
-// build 单站点装配: db → 迁移 → 类型 → 引擎 → 渲染 → web → admin → Setup。
+// build 单站点装配 — 按层分节（cmx 风格: 每层一个小函数, 顺序执行）:
+//
+//	① 存储    openDB + 迁移 + admin 账号引导
+//	② 类型    kinds 注册 + types.yaml 加载
+//	③ 引擎    core.Service + render.Engine
+//	④ Web     web.New（站点形态选项）
+//	⑤ 组件    uploads 服务 + admin 挂载（参数从 site 上下文取）
+//	⑥ 业务    Setup 钩子（站点路由/模板函数/seed）
 func (a *App[T]) build(spec SiteSpec[T]) (*web.Site, error) {
+	db, err := a.openDB(spec)
+	if err != nil {
+		return nil, err
+	}
+	ts, err := a.loadTypes(spec)
+	if err != nil {
+		return nil, err
+	}
+	svc := core.New(db, ts)
+	eng := render.New(spec.Templates, svc)
+
+	// PageDataMaker 泛型 T → any 包装（web 用 any, 类型在 App 层）
+	var maker web.PageDataMaker
+	if spec.PageDataMaker != nil {
+		maker = func(ctx *web.CmsCtx, n *core.Node) any { return spec.PageDataMaker(svc, ctx, n) }
+	}
+	site := web.New(svc, eng, web.SiteOptions{
+		Static: spec.Static,
+		Maker:  maker,
+		Debug:  a.options.Debug,
+	})
+
+	// 组件: uploads（前台资源服务）+ admin（写入/管理）— 参数从 site 上下文取
+	site.MountUploads(spec.Uploads)
+	admin.Mount(site, spec.Uploads)
+
+	// 业务钩子: 站点路由/模板函数/seed
+	if spec.Setup != nil {
+		if err := spec.Setup(site, svc); err != nil {
+			return nil, fmt.Errorf("setup: %w", err)
+		}
+	}
+	return site, nil
+}
+
+// openDB ① 存储: 打开 + SQL 日志 + 迁移 + admin 账号引导。
+func (a *App[T]) openDB(spec SiteSpec[T]) (*dba.SQL, error) {
 	db, err := dba.Open("sqlite", spec.DBPath)
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
 	db = db.SetLogger(dba.NewLogger(slog.Default(), time.Second*1, false))
 	if err := migrations.Up(db); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("migrate: %w", err)
 	}
-	// 管理账号引导（骨架责任; 固定密码优先, 否则随机打印一次）
+	// 管理账号引导（固定密码优先, 否则随机打印一次）
 	if dc, err := admin.EnsureDefaults(db); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("admin bootstrap: %w", err)
 	} else if dc != nil {
 		log.Printf("gcm: site (%v): admin created: %s / %s", spec.Hosts, dc.Username, dc.Password)
 		if a.options.AdminPass != "" {
 			if err := admin.NewService(db).SetPassword(a.options.AdminPass); err != nil {
-				return nil, err
+				return nil, fmt.Errorf("set admin password: %w", err)
 			}
 			log.Printf("gcm: site (%v): admin password set to fixed", spec.Hosts)
 		}
 	}
+	return db, nil
+}
+
+// loadTypes ② 类型: 站点自定义 kind 注册（types.Load 前）+ types.yaml。
+func (a *App[T]) loadTypes(spec SiteSpec[T]) (*types.Types, error) {
 	ts := types.New()
 	for _, k := range spec.Kinds {
 		ts.RegisterKind(k)
@@ -114,24 +163,7 @@ func (a *App[T]) build(spec SiteSpec[T]) (*web.Site, error) {
 			return nil, fmt.Errorf("types: %w", err)
 		}
 	}
-	svc := core.New(db, ts)
-	eng := render.New(spec.Templates, svc)
-	// PageDataMaker 泛型 T → any 包装（web 用 any, 类型在 App 层）
-	var maker web.PageDataMaker
-	if spec.PageDataMaker != nil {
-		maker = func(ctx *web.CmsCtx, n *core.Node) any { return spec.PageDataMaker(svc, ctx, n) }
-	}
-	site := web.New(svc, eng, spec.Static, maker)
-	site.Debug = a.options.Debug
-	// 上传目录是站点级配置: 前台 /uploads/* 服务在此挂（不依赖 admin 是否启用）
-	site.MountUploads(spec.Uploads)
-	admin.Mount(site, svc, ts, spec.Uploads)
-	if spec.Setup != nil {
-		if err := spec.Setup(site, svc); err != nil {
-			return nil, fmt.Errorf("setup: %w", err)
-		}
-	}
-	return site, nil
+	return ts, nil
 }
 
 // Handler 应用入口（测试/嵌入用）— 单站; 多站组合用 web.HostMux.Add(hosts, a.Handler())。

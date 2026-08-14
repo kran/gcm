@@ -123,8 +123,10 @@ func (b *backend) upload(ctx *web.CmsCtx) {
 // Mount 挂载 /admin 组到站点（登录保护; 公开入口: login/ui/upload）。
 // uploadDir 是上传落盘目录（可为空 = 禁用上传）; /uploads/* 服务由站点
 // 装配层挂载（gcm.NewApp — 前台资源不依赖 admin 是否启用）。
-func Mount(s *web.Site, svc *core.Service, ts *types.Types, uploadDir string) {
-	b := &backend{svc: NewService(s.DB()), core: svc, ts: ts, uploadDir: uploadDir}
+// svc/ts 从 site 上下文取（site.Service() / svc.Types()）— 装配参数最小化。
+func Mount(s *web.Site, uploadDir string) {
+	svc := s.Service()
+	b := &backend{svc: NewService(s.DB()), core: svc, ts: svc.Types(), uploadDir: uploadDir}
 
 	// /admin 组: 公开 login/logout/ui/upload, 其余登录保护
 	s.Group("/admin", func(g *cho.Cho[*web.CmsCtx]) {

@@ -1,12 +1,15 @@
 // Package web 站点 Web 层: 路由 + 渲染出口。
 //
-// M7 单站点起步（多站点 hostmux 后续）:
-//
 //	/static/* 静态资源 → 磁盘目录
+//	/uploads/* 上传文件服务（装配层挂载）
+//	/api/nodes/{type} 记录 API（Lisp filter + Q 直通）
 //	/node/{id|slug} 节点详情（级联模板 node--{type}.html）
 //	404 统一出口（404.html 或纯文本）
 //
 // 渲染失败 → HTML 注释（不泄漏错误细节给访客, 开发者查源码可见病灶）。
+//
+// 装配职责: web 只提供 Site 与路由原语 — 组件挂载（uploads/admin）与
+// 业务钩子（Setup）由装配层（gcm.NewApp）按序调用。
 package web
 
 import (
@@ -62,9 +65,7 @@ func (c *CmsCtx) DB() *dba.SQL { return c.site.db }
 
 // Render 站点渲染出口: 渲染前 Fire HookRender（站点注入页面级数据）,
 // 候选级联 + 渲染错误 → HTML 注释（fail-loud 可见）。
-//
-// 默认行为: 站点未注入 Page 时, 用内置 PageData（约定分类字段）计算注入 —
-// 站点 HookRender 可完全覆盖（注入自己的 Page 或扩展字段）。
+// Page 上下文由站点 PageDataMaker 构造（未注入且 maker 非 nil 时）。
 func (c *CmsCtx) Render(candidates []string, data map[string]any) {
 	if err := c.site.svc.Hooks().Fire(HookRender, c, data); err != nil {
 		c.site.renderError(c, "render hook failed: "+err.Error())
@@ -79,6 +80,17 @@ func (c *CmsCtx) Render(candidates []string, data map[string]any) {
 		data["Page"] = c.site.PageDataMaker(c, node)
 	}
 	c.site.renderHTML(c, candidates, data)
+}
+
+// SiteOptions 站点装配选项（web.New 的配置集中入口）。
+type SiteOptions struct {
+	Static string // 静态资源目录（空 = 不挂 /static）
+	// PageDataMaker 页面上下文构造（站点自定义形态; nil = 无 Page 数据）—
+	// 模板 .Page.X 访问站点自己定义的字段/方法。
+	Maker PageDataMaker
+	// Debug 开发模式: 渲染失败显示错误页（模板名/行号/原因/候选/数据 keys）;
+	// 生产: HTML 注释（不泄漏细节, 仅日志）。
+	Debug bool
 }
 
 // Site 站点装配: cho 路由 + 核心服务 + 渲染引擎 + 静态目录。
@@ -106,14 +118,15 @@ func (s *Site) DB() *dba.SQL { return s.db }
 // Func 注册站点自定义模板函数（转发到渲染引擎; 站点业务查询在此组装）。
 func (s *Site) Func(name string, fn any) { s.eng.Func(name, fn) }
 
-// New 建站点。static 是静态资源目录（可为空串 = 不挂静态路由）。
-func New(svc *core.Service, eng *render.Engine, static string, maker PageDataMaker) *Site {
+// New 建站点（svc/eng 是引擎层产物; 站点形态选项走 SiteOptions）。
+func New(svc *core.Service, eng *render.Engine, opts SiteOptions) *Site {
 	s := &Site{
 		db:            svc.DB(),
 		svc:           svc,
 		eng:           eng,
-		static:        static,
-		PageDataMaker: maker,
+		static:        opts.Static,
+		Debug:         opts.Debug,
+		PageDataMaker: opts.Maker,
 	}
 	s.Cho = cho.New(func(w http.ResponseWriter, r *http.Request) *CmsCtx {
 		return &CmsCtx{BaseContext: cho.MakeBaseContext(w, r), site: s}
@@ -131,7 +144,8 @@ func New(svc *core.Service, eng *render.Engine, static string, maker PageDataMak
 	return s
 }
 
-// MountUploads 挂载 /uploads/* 上传文件服务（admin 上传落盘目录）。
+// MountUploads 挂载 /uploads/* 上传文件服务（上传目录是站点级配置 —
+// 前台资源服务不依赖 admin 是否启用; admin 只管写入落盘）。
 func (s *Site) MountUploads(dir string) {
 	if dir == "" {
 		return
