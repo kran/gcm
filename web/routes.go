@@ -41,9 +41,8 @@ func (s *Site) nodeHandler(ctx *CmsCtx) {
 	if n.Extra == nil {
 		n.Extra = map[string]any{}
 	}
-	if _, ok := n.Extra["url"]; !ok {
-		n.Extra["url"] = n.URL() // Node.URL — 默认路由约定, 站点可覆盖
-	}
+	// 默认 url 注入是 HookNodeRender 的默认 handler（DefineRenderHooks 注册 —
+	// 站点可加自己的 handler 覆盖 Extra["url"] 或注入其他）
 	if err := s.svc.Hooks().Fire(HookNodeRender, ctx, n, data); err != nil {
 		slog.Error("node render hook failed", "path", raw, "err", err)
 		ctx.String(http.StatusInternalServerError, "500 internal server error")

@@ -26,9 +26,22 @@ const HookNodeEnrich = "web.node.enrich"
 // DefineRenderHooks 声明渲染事件（注册即校验签名 — 站点 AddHook 前必须存在;
 // 装配层调用）。proto 带 CmsCtx, 定义必须在 web 包。
 func DefineRenderHooks(svc *core.Service) error {
-	return svc.Hooks().Define(
+	if err := svc.Hooks().Define(
 		hook.Spec{Name: HookRender, Proto: func(*CmsCtx, map[string]any) error { return nil }},
 		hook.Spec{Name: HookNodeRender, Proto: func(*CmsCtx, *core.Node, map[string]any) error { return nil }},
 		hook.Spec{Name: HookNodeEnrich, Proto: func(*CmsCtx, *core.Node) error { return nil }},
-	)
+	); err != nil {
+		return err
+	}
+	// 默认 handler（内部消费示范 — hook 的正确用法）: 节点页 url 注入;
+	// 站点 AddHook(HookNodeRender, ...) 可覆盖 Extra["url"] 或注入其他。
+	return svc.Hooks().AddHook(HookNodeRender, func(ctx *CmsCtx, n *core.Node, data map[string]any) error {
+		if n.Extra == nil {
+			n.Extra = map[string]any{}
+		}
+		if _, ok := n.Extra["url"]; !ok {
+			n.Extra["url"] = n.URL()
+		}
+		return nil
+	})
 }

@@ -56,12 +56,33 @@ func New(db *dba.SQL, ts *types.Types) *Service {
 	// 标准事件声明（注册即校验签名）
 	svc.hooks = hook.New()
 	if err := svc.hooks.Define(
-		hook.Spec{Name: HookNodeSave, Proto: func(*Node) error { return nil }},
-		hook.Spec{Name: HookNodeDelete, Proto: func(int64) error { return nil }},
+		hook.Spec{Name: HookNodeSave, Proto: func(*dba.SQL, *Node) error { return nil }},
+		hook.Spec{Name: HookNodeDelete, Proto: func(*dba.SQL, int64) error { return nil }},
 	); err != nil {
 		panic("core: define standard hooks: " + err.Error())
 	}
+	// 内部默认 handler（演示 hook 消费 + 减少硬编码）: 搜索索引同步 —
+	// 站点可加自己的 HookNodeSave/Delete handler（审计/通知/级联）。
+	if err := svc.hooks.AddHook(HookNodeSave, svc.searchSync); err != nil {
+		panic("core: register search sync hook: " + err.Error())
+	}
+	if err := svc.hooks.AddHook(HookNodeDelete, svc.searchDelete); err != nil {
+		panic("core: register search delete hook: " + err.Error())
+	}
 	return svc
+}
+
+// searchSync 搜索索引同步（默认 HookNodeSave handler; 事务内）。
+func (s *Service) searchSync(tx *dba.SQL, n *Node) error {
+	if s.searchableType(n.Type) && n.Status == StatusPublished {
+		return s.search.Sync(tx, n)
+	}
+	return s.search.Delete(tx, n.ID)
+}
+
+// searchDelete 搜索索引删除（默认 HookNodeDelete handler; 事务内）。
+func (s *Service) searchDelete(tx *dba.SQL, id int64) error {
+	return s.search.Delete(tx, id)
 }
 
 // DB 暴露本站 db（管理通道/业务表用）。
@@ -194,25 +215,15 @@ func (s *Service) DeleteNode(id int64) error {
 		if affected == 0 {
 			return ErrNotFound
 		}
-		if err := s.search.Delete(tx, id); err != nil {
-			return err
-		}
-		// 扩展钩子（事务内, 失败回滚）
-		return s.hooks.Fire(HookNodeDelete, id)
+		// 扩展钩子（事务内, 失败回滚 — 搜索索引删除是默认 handler）
+		return s.hooks.Fire(HookNodeDelete, tx, id)
 	})
 }
 
-// syncSearchAndFire 写路径公共尾部: 全文索引同步（search:true + 已发布才进,
-// 业务规则在 Service）+ 扩展钩子。事务内执行, 失败回滚（fail-loud）。
+// syncSearchAndFire 写路径公共尾部: 扩展钩子 Fire（事务内, 失败回滚）。
+// 搜索索引同步是默认 handler（core.New 注册 — hook 消费示范）。
 func (s *Service) syncSearchAndFire(tx *dba.SQL, n *Node) error {
-	if s.searchableType(n.Type) && n.Status == StatusPublished {
-		if err := s.search.Sync(tx, n); err != nil {
-			return err
-		}
-	} else if err := s.search.Delete(tx, n.ID); err != nil {
-		return err
-	}
-	return s.hooks.Fire(HookNodeSave, n)
+	return s.hooks.Fire(HookNodeSave, tx, n)
 }
 
 // ── 读 ─────────────────────────────────────────

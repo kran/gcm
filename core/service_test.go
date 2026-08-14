@@ -371,11 +371,11 @@ types:
 func TestServiceHooks(t *testing.T) {
 	s := newFilterSvc(t)
 	var saved, deleted []string
-	s.Hooks().AddHook(HookNodeSave, func(n *Node) error {
+	s.Hooks().AddHook(HookNodeSave, func(tx *dba.SQL, n *Node) error {
 		saved = append(saved, n.Type+":"+n.Title)
 		return nil
 	})
-	s.Hooks().AddHook(HookNodeDelete, func(id int64) error {
+	s.Hooks().AddHook(HookNodeDelete, func(tx *dba.SQL, id int64) error {
 		deleted = append(deleted, fmt.Sprintf("%d", id))
 		return nil
 	})
@@ -406,7 +406,7 @@ func TestServiceHooks(t *testing.T) {
 // hook 失败 → 事务回滚（fail-loud: 节点不落库）。
 func TestHookAbortRollsBack(t *testing.T) {
 	s := newFilterSvc(t)
-	s.Hooks().AddHook(HookNodeSave, func(n *Node) error {
+	s.Hooks().AddHook(HookNodeSave, func(tx *dba.SQL, n *Node) error {
 		return errors.New("hook rejects")
 	})
 	id, err := s.CreateNode(&Node{Type: "article", Title: "x", Fields: Fields{"title": "x"}})
