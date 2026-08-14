@@ -521,8 +521,13 @@ type ListQuery struct {
 	Size   int
 }
 
-// ListQWithParams ListQ + 占位符参数绑定（filter 里的 {:name}）。
-func (s *Service) ListQWithParams(q ListQuery, params map[string]any) ([]Node, int64, error) {
+// ListQ 结构化查询执行（占位符参数可选 — {:name} 绑定）:
+// base SQL 模板 + ${where}/${order} var 槽; 参数经变参传入, 无则 nil。
+func (s *Service) ListQ(q ListQuery, params ...map[string]any) ([]Node, int64, error) {
+	var p map[string]any
+	if len(params) > 0 {
+		p = params[0]
+	}
 	if q.Page < 1 {
 		q.Page = 1
 	}
@@ -535,7 +540,7 @@ func (s *Service) ListQWithParams(q ListQuery, params map[string]any) ([]Node, i
 	db := s.db.Add(`SELECT ${F:*} FROM nodes WHERE ${where} ${order:ORDER BY sort, id DESC}`)
 	if q.Filter != "" {
 		var err error
-		db, err = s.CompileLispInto(db, q.Filter, params)
+		db, err = s.CompileLispInto(db, q.Filter, p)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -564,9 +569,4 @@ func (s *Service) ListQWithParams(q ListQuery, params map[string]any) ([]Node, i
 		}
 	}
 	return rows, total, nil
-}
-
-// ListQ 结构化查询执行: base SQL 模板 + ${where}/${order} var 槽。
-func (s *Service) ListQ(q ListQuery) ([]Node, int64, error) {
-	return s.ListQWithParams(q, nil)
 }

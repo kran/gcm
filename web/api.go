@@ -91,7 +91,7 @@ func (s *Site) apiNodes(ctx *CmsCtx) {
 		f = `(= type "` + typ + `")`
 	}
 	q := core.ListQuery{Filter: f, Sort: sort, Expand: expand, Page: page, Size: size}
-	list, total, err := s.svc.ListQWithParams(q, nil)
+	list, total, err := s.svc.ListQ(q, nil)
 	if err != nil {
 		// filter 编译错误（语法/未知字段/未知函数）— fail-loud 400
 		ctx.String(http.StatusBadRequest, "api: "+err.Error())

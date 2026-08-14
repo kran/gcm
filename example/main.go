@@ -134,7 +134,7 @@ func setup(site *web.Site, svc *core.Service) error {
 		for i, id := range ids {
 			anyIDs[i] = id
 		}
-		list, _, err := svc.ListQWithParams(core.ListQuery{
+		list, _, err := svc.ListQ(core.ListQuery{
 			Filter: `(and (= type "article") (in ->categories {:ids}))`, Page: 1, Size: 50},
 			map[string]any{"ids": anyIDs})
 		if err != nil {
