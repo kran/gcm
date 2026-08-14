@@ -12,7 +12,8 @@ import "fmt"
 // Traverse 沿 field 出边递归（向上: 祖先链）。maxHops 上限防环（有界原则）。
 // 返回可达节点 id（含多跳, 不含起点）。
 func (s *Service) Traverse(start int64, field string, maxHops int) ([]int64, error) {
-	if _, _, err := s.refFieldMeta(start, field); err != nil {
+	// 读路径: 全局字段校验（纯内存, 不查节点 — 节点存在性由执行期承担）
+	if _, _, err := s.refFieldMetaGlobal(field); err != nil {
 		return nil, err
 	}
 	if maxHops < 1 {
@@ -33,7 +34,8 @@ func (s *Service) Traverse(start int64, field string, maxHops int) ([]int64, err
 // （Traverse 是 ORDER BY id — 层级乱序不可用于链; 这里是层级语义）。
 // 返回 *Node 列表（批量取节点并按链序重排）— 任意级父分类一步拿到。
 func (s *Service) Ancestors(start int64, field string, maxHops int) ([]*Node, error) {
-	if _, _, err := s.refFieldMeta(start, field); err != nil {
+	// 读路径: 全局字段校验（纯内存, 不查节点 — 节点存在性由执行期承担）
+	if _, _, err := s.refFieldMetaGlobal(field); err != nil {
 		return nil, err
 	}
 	if maxHops < 1 {
@@ -71,7 +73,8 @@ func (s *Service) Ancestors(start int64, field string, maxHops int) ([]*Node, er
 // Subtree 沿 field 入边递归（向下: 子树/后代）。maxHops 上限防环。
 // 返回全部后代节点 id（不含起点）。
 func (s *Service) Subtree(start int64, field string, maxHops int) ([]int64, error) {
-	if _, _, err := s.refFieldMeta(start, field); err != nil {
+	// 读路径: 全局字段校验（纯内存, 不查节点 — 节点存在性由执行期承担）
+	if _, _, err := s.refFieldMetaGlobal(field); err != nil {
 		return nil, err
 	}
 	if maxHops < 1 {
@@ -91,7 +94,8 @@ func (s *Service) Subtree(start int64, field string, maxHops int) ([]int64, erro
 // （等价关系无方向 — 即使只存单向边, 类内全部成员可达）。
 // 返回含起点在内的整个等价类。maxHops 上限（等价类应小, 防御环）。
 func (s *Service) EquivalenceClass(start int64, field string, maxHops int) ([]int64, error) {
-	if _, _, err := s.refFieldMeta(start, field); err != nil {
+	// 读路径: 全局字段校验（纯内存, 不查节点 — 节点存在性由执行期承担）
+	if _, _, err := s.refFieldMetaGlobal(field); err != nil {
 		return nil, err
 	}
 	if maxHops < 1 {

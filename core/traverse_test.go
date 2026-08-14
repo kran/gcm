@@ -154,8 +154,11 @@ func TestTraverseValidation(t *testing.T) {
 	if _, err := s.Traverse(root, "name", 10); err == nil {
 		t.Fatal("non-ref field must fail")
 	}
-	if _, err := s.Subtree(999, "parent", 10); err == nil {
-		t.Fatal("missing start must fail")
+	// 节点不存在: 宽松后静默空（CTE 返回空 — 不查节点校验）;
+	// 字段拼错仍 fail-loud（全局字段校验保留）
+	ids, err := s.Subtree(999, "parent", 10)
+	if err != nil || len(ids) != 0 {
+		t.Fatalf("missing start: ids=%v err=%v (宽松: 静默空)", ids, err)
 	}
 }
 
