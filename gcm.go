@@ -20,7 +20,6 @@ package gcm
 
 import (
 	"fmt"
-	"github.com/kran/cho"
 	"github.com/kran/dba"
 	"github.com/kran/gcm/core"
 	"github.com/kran/gcm/core/render"
@@ -53,12 +52,9 @@ type SiteSpec struct {
 	Templates string // 模板目录（node--{type}.html 级联根）
 	Static    string // 静态资源目录（可空 = 不挂 /static）
 	Uploads   string // 上传目录（可空 = 不上传; 装配层挂 /uploads 服务 + admin 写入）
-	// Middleware 全局中间件（类型化 — 可读写 CmsCtx, 如设置 auth）;
-	// chi 要求中间件先于路由注册 — 装配层在 Mount 前挂载, Setup 里的
-	// UseCtx 只对此后注册的路由生效（内置 /node /api 管不了）。
-	Middleware []cho.CtxMw[*web.CmsCtx]
-	// Setup 站点业务装配: 自定义路由 / 模板函数 / HookRender 注入 Page / seed。
-	// 装配后调用; 返回 error = 装配失败（fail-loud）。
+	// Setup 站点业务装配: 中间件(UseCtx)/自定义路由/模板函数/HookRender 注入
+	// Page/seed。在 Mount（内置路由）之前调用 — 站点的中间件对内置路由生效,
+	// 站点的精确路由可覆盖内置通配（/node/{id} 外的 /node/x 精确先匹配）。
 	Setup func(s *web.Site, svc *core.Service) error
 }
 
@@ -106,23 +102,19 @@ func (a *builder) build(spec SiteSpec) (*web.Site, error) {
 	site := web.New(svc, eng)
 	site.Debug = spec.Debug
 
-	// 全局中间件（Mount 前挂 — chi 要求先于路由）
-	if len(spec.Middleware) > 0 {
-		site.UseCtx(spec.Middleware...)
-	}
-
-	// 装配序列（每项一个绑定原语, 顺序即职责）:
-	//   hook 注册 → 全局中间件 → 静态/上传 → API → 内容路由 → admin → 业务 Setup
+	// 装配序列（顺序即职责 — 业务先行, 内置路由最后）:
+	//   hook 注册 → 业务 Setup（中间件/路由/函数 — 先于内置路由）→
+	//   静态/上传/API/内容（web.Mount）→ admin
 	if err := web.DefineRenderHooks(svc); err != nil {
 		return nil, fmt.Errorf("define render hooks: %w", err)
 	}
-	web.Mount(site, spec.Static, spec.Uploads)
-	admin.Mount(site, spec.Uploads)
 	if spec.Setup != nil {
 		if err := spec.Setup(site, svc); err != nil {
 			return nil, fmt.Errorf("setup: %w", err)
 		}
 	}
+	web.Mount(site, spec.Static, spec.Uploads)
+	admin.Mount(site, spec.Uploads)
 	return site, nil
 }
 
