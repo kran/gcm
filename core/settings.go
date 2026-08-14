@@ -39,7 +39,7 @@ func checkKey(key string) error {
 	return nil
 }
 
-// GetNodeById 取一条; 未找到返回 (nil, nil)。
+// GetSetting 取一条; 未找到返回 (nil, nil)。
 func (s *Service) GetSetting(key string) (*Setting, error) {
 	var st Setting
 	found, err := s.db.Add(`SELECT * FROM settings WHERE key = #{1}`, key).Get(&st)

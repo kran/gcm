@@ -97,19 +97,21 @@ func (e *Engine) queryFuncs() template.FuncMap {
 		// ── 查询原语 ─────────────────────────
 		// get: 单节点（id 兼容 JSON float64 / int64）
 		"get": func(id any) *core.Node {
-			nid, err := core.ToID(id)
+			nid, err := types.ToID(id)
 			fail(err)
 			n, err := svc.GetNodeById(nid)
 			fail(err)
 			return n
 		},
-		// list: 按类型列表（status<0 不过滤 — Lisp 合成）
+		// list: 按类型列表（status<0 不过滤; 占位符绑定参数化）
 		"list": func(typ string, status, page, size int) []core.Node {
-			f := `(= type "` + typ + `")`
+			params := map[string]any{"typ": typ}
+			f := `(= type {:typ})`
 			if status >= 0 {
-				f = fmt.Sprintf(`(and (= type "%s") (= status %d))`, typ, status)
+				f = `(and (= type {:typ}) (= status {:st}))`
+				params["st"] = status
 			}
-			list, _, err := svc.Q(core.ListQuery{Filter: f, Page: page, Size: size})
+			list, _, err := svc.Q(core.ListQuery{Filter: f, Page: page, Size: size}, params)
 			fail(err)
 			return list
 		},
@@ -185,7 +187,7 @@ func (e *Engine) queryFuncs() template.FuncMap {
 				fail(err)
 				return n
 			case int64, int, float64:
-				nid, err := core.ToID(v)
+				nid, err := types.ToID(v)
 				fail(err)
 				n, err := svc.ExpandPath(nid, expr)
 				fail(err)
@@ -219,7 +221,7 @@ func (e *Engine) queryFuncs() template.FuncMap {
 			case []any:
 				ids := make([]int64, 0, len(t))
 				for _, item := range t {
-					nid, err := core.ToID(item)
+					nid, err := types.ToID(item)
 					fail(err)
 					ids = append(ids, nid)
 				}

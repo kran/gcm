@@ -4,11 +4,11 @@
 //
 // 参数:
 //
-//	{type} 路径参数 — 类型名（编译器宿主; 引用/穿透字段校验依赖它）
-//	filter Lisp filter 表达式（(and (= status 1) (in categories (subtree "root")))）
+//	{type} 路径参数 — 类型过滤（API 层合成 (= type "x") 进 filter）
+//	filter Lisp filter 表达式（(and (= status 1) (in ->categories (subtree "root")))）
 //	sort   列白名单 + asc|desc（"sort, id DESC" — 防 ORDER BY 注入）
 //	page   页号（默认 1）
-//	size   每页数（默认 20, 上限 100）
+//	size   每页数（默认 20）
 //	expand 逗号分隔展开路径（"authors, categories" / "categories.parent"）
 //
 // 返回: {"items": [Node...], "total": N} — Node 完整序列化

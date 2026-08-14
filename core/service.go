@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/kran/dba"
@@ -36,13 +35,12 @@ const (
 )
 
 type Service struct {
-	db          *dba.SQL
-	dao         *dba.Dao[Node]
-	types       *types.Types
-	search      SearchIndex // 全文检索引擎（默认 FTS5+bigram; SetSearchIndex 可换）
-	hooks       *hook.Bus
-	filterCache sync.Map             // filter 表达式 → *CompiledFilter（编译缓存, 消费方共享）
-	lispFuncsC  map[string]LispFuncC // Lisp filter 函数注册表（站点扩展; 内置在编译器）
+	db         *dba.SQL
+	dao        *dba.Dao[Node]
+	types      *types.Types
+	search     SearchIndex // 全文检索引擎（默认 FTS5+bigram; SetSearchIndex 可换）
+	hooks      *hook.Bus
+	lispFuncsC map[string]LispFuncC // Lisp filter 函数注册表（站点扩展; 内置在编译器）
 }
 
 // Hooks 站点级 hook 总线（注册扩展; 执行顺序 = priority 升序 + 注册序稳定）。
@@ -219,7 +217,6 @@ func (s *Service) syncSearchAndFire(tx *dba.SQL, n *Node) error {
 
 // ── 读 ─────────────────────────────────────────
 
-// ListAny 通用分页列表（管理通道: where 自定义, 占位符从 #{1} 起）。
 // GetNodeById 按 id 取节点; 不存在返回 (nil, nil) — 查询语义（"找不到"不是错误,
 // 模板层 get 返回 nil 渲染空）。管理 API 需区分时用 FullFields（ErrNotFound）。
 func (s *Service) GetNodeById(id int64) (*Node, error) {
@@ -294,8 +291,6 @@ func (s *Service) GetNodeBySlug(slug string) (*Node, error) {
 	return s.dao.Get("slug = #{1}", slug)
 }
 
-// List 按类型 + 状态分页列表（status<0 不过滤）。
-// ORDER BY sort, id DESC。
 // titleFrom 抽标题列: 类型 title 声明字段的值（双存: fields 保留完整,
 // 列是投影 — 单事务内同步, 无不一致窗口）。无声明 → 空。
 // 支持两种声明: "字段名"（本类型标量字段）和穿透 "ref.$字段"/"ref.列"
@@ -330,7 +325,7 @@ func (s *Service) titleFrom(td types.TypeDef, fields Fields) string {
 		tid = int64(n)
 	case []any:
 		if len(n) > 0 {
-			tid, _ = ToID(n[0])
+			tid, _ = types.ToID(n[0])
 		}
 	}
 	if tid <= 0 {
@@ -457,32 +452,15 @@ func (s *Service) refIDs(f types.FieldDef, v any) ([]int64, error) {
 	}
 }
 
-// ToID 数值 → int64（JSON 解码后是 float64）。
-func ToID(v any) (int64, error) {
-	switch n := v.(type) {
-	case int64:
-		return n, nil
-	case int:
-		return int64(n), nil
-	case float64:
-		if n != float64(int64(n)) {
-			return 0, fmt.Errorf("expects integer node id, got %v", n)
-		}
-		return int64(n), nil
-	default:
-		return 0, fmt.Errorf("expects node id (int64), got %T", v)
-	}
-}
-
 // ── 结构化查询（base SQL 模板 + var 槽）─────────────
 //
-// ListQuery 是 List/ListFiltered 的结构化替代: 过滤（Lisp 表达式）、排序、
-// 展开、分页 — 内部用 dba var 槽（${where} ${order}）组合, 不拼字符串。
+// ListQuery 结构化查询: 过滤（Lisp 表达式）、排序、展开、分页 —
+// 内部用 dba var 槽（${where} ${order}）组合, 不拼字符串。
 // Lisp filter 编译器（CompileLispInto）作为 ${where} 槽的挂载器。
 type ListQuery struct {
 	Filter string // Lisp filter 表达式（空 = 不过滤; 类型过滤由使用方构建 (= type "x")）
 	Sort   string // 排序（空 = 默认 ORDER BY sort, id DESC）
-	Expand string // 展开表达式（预留）
+	Expand string // 展开表达式（"authors, categories" — 批量路径展开）
 	Page   int
 	Size   int
 }

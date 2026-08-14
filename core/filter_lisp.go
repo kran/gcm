@@ -1,12 +1,13 @@
 // Lisp filter: S-expression 语法 — 函数即原语, 注册驱动。
 //
 //	语法:  (函数 参数...)
-//	内置:  = != > >= < <= like and or not ref ref-in has-in get in subtree
-//	站点:  RegisterLispFunc(name, fn) — 自定义函数（任意 AST → SQL 片段,
+//	内置:  = != > >= < <= like and or not edge in subtree
+//	站点:  RegisterLispFuncC(name, fn) — 自定义函数（任意 AST → SQL 片段,
 //	       可组合/嵌套 — 图原语、集合、业务查询都进表达式层）。
 //
-//	穿透:  (get 引用段... 目标字段 值) — 任意深度（递归编译, 别名唯一）
-//	集合:  (in categories (subtree "slug")) — subtree 返回集合, in 包含
+//	取值:  status(列) / $name(JSON) / ->field(出边) / <-type.field(入边)
+//	引用:  (edge 字段 目标) — 一元=存在性; 值=折叠; 谓词=开层
+//	集合:  (in 字段 集合) — 数组字面量 [1 2 3] / 占位符 / (subtree "slug")
 //
 //	值: 数字 / "字符串" / true / false / {:占位符}
 package core
