@@ -34,7 +34,7 @@ type backend struct {
 // fail-loud 可见性优先; 敏感 SQL 细节留在日志）。
 func (b *backend) internal(ctx *web.CmsCtx, err error) {
 	slog.Error("admin internal", "path", ctx.R.URL.Path, "err", err)
-	b.internal(ctx, err)
+	_ = ctx.Error(http.StatusInternalServerError, "internal error")
 }
 
 // bad 客户端错误（校验/参数）: 直接透传, 前端表单回显。
@@ -250,7 +250,12 @@ func (b *backend) listNodes(ctx *web.CmsCtx) {
 		list, total, err = b.core.List(typ, -1, page, size)
 	}
 	if err != nil {
-		b.internal(ctx, err)
+		// filter 编译错误（filter-lisp: 前缀）= 客户端参数 → 400; 其余 → 500
+		if strings.Contains(err.Error(), "filter-lisp:") {
+			b.bad(ctx, err)
+		} else {
+			b.internal(ctx, err)
+		}
 		return
 	}
 	// 列表默认展开全部出边 ref 字段（一层, 批量 — 查询次数=字段数, 与页大小无关）

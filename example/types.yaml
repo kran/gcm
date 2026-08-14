@@ -49,7 +49,7 @@ types:
             [ { name: og_title, kind: textarea }, { name: og_desc, kind: textarea } ], label: SEO }
       - { name: scores, kind: array, item: { kind: number }, label: 评分 }
   employment:
-    title: person.$.name
+    title: person.$name
     fields:
       - { name: person, kind: ref, to: person, required: true }
       - { name: org, kind: ref, to: org, required: true }

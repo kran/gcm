@@ -320,8 +320,8 @@ func (s *Service) List(typeName string, status int, page, size int) ([]Node, int
 
 // titleFrom 抽标题列: 类型 title 声明字段的值（双存: fields 保留完整,
 // 列是投影 — 单事务内同步, 无不一致窗口）。无声明 → 空。
-// 支持两种声明: "字段名"（本类型标量字段）和穿透 "ref.$.字段"/"ref.列"
-// （引用目标的字段/列 — 关系节点标题, 如 employment: person.$.name）。
+// 支持两种声明: "字段名"（本类型标量字段）和穿透 "ref.$字段"/"ref.列"
+// （引用目标的字段/列 — 关系节点标题, 如 employment: person.$name）。
 // ⚠ 穿透是写时快照: 目标节点改字段后, 引用方 title 列不自动刷新
 // （需求信号出现再做级联; 列表已默认 expand, 前端可显示实时值）。
 func (s *Service) titleFrom(td types.TypeDef, fields Fields) string {

@@ -248,7 +248,7 @@ func (t *Types) validate(defs map[string]TypeDef) error {
 }
 
 // validateTitle 校验 title 声明: 本类型字段名（标量）或穿透路径
-// "ref.$.字段"（引用目标 JSON 标量）/ "ref.列"（引用目标节点列）。
+// "ref.$字段"（引用目标 JSON 标量）/ "ref.列"（引用目标节点列）。
 // 穿透第一段必须是本类型 ref 字段; 第二段跨类型校验（defs 全量在手）。
 func (t *Types) validateTitle(name string, td TypeDef, defs map[string]TypeDef) error {
 	// 统一路径语言解析（与 filter/expand 同一抽象）
