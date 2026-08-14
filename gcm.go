@@ -67,6 +67,7 @@ type Options struct {
 // App 多站点应用: HostMux 按域名分发到各站点。
 type App[T any] struct {
 	site    *web.Site
+	mux     *web.HostMux
 	options Options
 }
 
@@ -80,6 +81,13 @@ func NewApp[T any](opts Options, spec SiteSpec[T]) (*App[T], error) {
 		return nil, fmt.Errorf("gcm: %w", err)
 	}
 	app.site = site
+	// 单站统一入口: hosts 分发 + fallback 兜底（未知 host / IP 直连）
+	mux := web.NewHostMux()
+	if len(spec.Hosts) > 0 {
+		mux.Add(spec.Hosts, site)
+	}
+	mux.SetFallback(site)
+	app.mux = mux
 	return app, nil
 }
 
@@ -108,13 +116,20 @@ func (a *App[T]) build(spec SiteSpec[T]) (*web.Site, error) {
 	if spec.PageDataMaker != nil {
 		maker = func(ctx *web.CmsCtx, n *core.Node) any { return spec.PageDataMaker(svc, ctx, n) }
 	}
-	site := web.New(svc, eng, spec.Static, maker, a.options.Debug)
+	site := web.New(svc, eng)
+	site.Debug = a.options.Debug
+	site.PageDataMaker = maker
 
-	// 组件: uploads（前台资源服务）+ admin（写入/管理）— 参数从 site 上下文取
-	site.MountUploads(spec.Uploads)
+	// 装配序列（每项一个绑定原语, 顺序即职责）:
+	//   hook 注册 → 静态/上传 → API → 内容路由 → admin → 业务 Setup
+	if err := web.DefineRenderHooks(svc); err != nil {
+		return nil, fmt.Errorf("define render hooks: %w", err)
+	}
+	web.MountStatic(site, spec.Static)
+	web.MountUploads(site, spec.Uploads)
+	web.MountAPI(site)
+	web.MountContent(site)
 	admin.Mount(site, spec.Uploads)
-
-	// 业务钩子: 站点路由/模板函数/seed
 	if spec.Setup != nil {
 		if err := spec.Setup(site, svc); err != nil {
 			return nil, fmt.Errorf("setup: %w", err)
@@ -162,14 +177,15 @@ func (a *App[T]) loadTypes(spec SiteSpec[T]) (*types.Types, error) {
 	return ts, nil
 }
 
-// Handler 应用入口（测试/嵌入用）— 单站; 多站组合用 web.HostMux.Add(hosts, a.Handler())。
-func (a *App[T]) Handler() http.Handler { return a.site }
+// Handler 应用入口: 本站 mux（hosts 分发 + fallback 兜底 — 单站/IP 直连也走 mux）。
+// 多站组合: 开发者各自 NewApp, 再 mux.Add(hosts, a.Handler())（mux 可嵌套）。
+func (a *App[T]) Handler() http.Handler { return a.mux }
 
-// Site 站点实例（多站组合/高级装配用）。
+// Site 站点实例（多站组合/高级装配用 — 直接挂 site 而非嵌套 mux 时）。
 func (a *App[T]) Site() *web.Site { return a.site }
 
-// Listen 监听并服务（单站直连; 多站请用 Handler + HostMux）。
+// Listen 监听并服务（经本站 mux）。
 func (a *App[T]) Listen(addr string) error {
 	log.Printf("gcm: listening on %s", addr)
-	return http.ListenAndServe(addr, a.site)
+	return http.ListenAndServe(addr, a.mux)
 }

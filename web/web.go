@@ -107,36 +107,43 @@ func (s *Site) DB() *dba.SQL { return s.db }
 // Func 注册站点自定义模板函数（转发到渲染引擎; 站点业务查询在此组装）。
 func (s *Site) Func(name string, fn any) { s.eng.Func(name, fn) }
 
-// New 建站点。static 是静态资源目录（空 = 不挂 /static）; maker 是页面上下文
-// 构造（nil = 无 Page）; debug 控制渲染失败出口（错误页 / HTML 注释）。
-func New(svc *core.Service, eng *render.Engine, static string, maker PageDataMaker, debug bool) *Site {
+// New 建站点: cho + CmsCtx + 引擎引用。零挂载零注册 —
+// 路由绑定（Mount*）与渲染事件（DefineRenderHooks）由装配层按序调用,
+// web 只提供绑定原语不决定装配顺序。
+func New(svc *core.Service, eng *render.Engine) *Site {
 	s := &Site{
-		db:            svc.DB(),
-		svc:           svc,
-		eng:           eng,
-		static:        static,
-		Debug:         debug,
-		PageDataMaker: maker,
+		db:  svc.DB(),
+		svc: svc,
+		eng: eng,
 	}
 	s.Cho = cho.New(func(w http.ResponseWriter, r *http.Request) *CmsCtx {
 		return &CmsCtx{BaseContext: cho.MakeBaseContext(w, r), site: s}
 	})
-	// 声明渲染事件（注册即校验签名; 站点 AddHook 前必须存在）
-	err := svc.Hooks().Define(
+	return s
+}
+
+// DefineRenderHooks 声明渲染事件（注册即校验签名 — 站点 AddHook 前必须存在;
+// 装配层调用）。proto 带 CmsCtx, 定义必须在 web 包。
+func DefineRenderHooks(svc *core.Service) error {
+	return svc.Hooks().Define(
 		hook.Spec{Name: HookRender, Proto: func(*CmsCtx, map[string]any) error { return nil }},
 		hook.Spec{Name: HookNodeRender, Proto: func(*CmsCtx, *core.Node, map[string]any) error { return nil }},
 		hook.Spec{Name: HookNodeEnrich, Proto: func(*CmsCtx, *core.Node) error { return nil }},
 	)
-	if err != nil {
-		panic("web: define render hooks: " + err.Error())
-	}
-	s.mount()
-	return s
 }
 
-// MountUploads 挂载 /uploads/* 上传文件服务（上传目录是站点级配置 —
+// MountStatic 绑定 /static/* → 磁盘目录（dir 空 = 跳过）。
+func MountStatic(s *Site, dir string) {
+	if dir == "" {
+		return
+	}
+	s.static = dir
+	s.Get("/static/*", s.staticHandler())
+}
+
+// MountUploads 绑定 /uploads/* 上传文件服务（上传目录是站点级配置 —
 // 前台资源服务不依赖 admin 是否启用; admin 只管写入落盘）。
-func (s *Site) MountUploads(dir string) {
+func MountUploads(s *Site, dir string) {
 	if dir == "" {
 		return
 	}
@@ -144,15 +151,14 @@ func (s *Site) MountUploads(dir string) {
 	s.Get("/uploads/*", func(ctx *CmsCtx) { fs.ServeHTTP(ctx.W, ctx.R) })
 }
 
-// mount 挂载前台路由。
-func (s *Site) mount() {
-	if s.static != "" {
-		s.Get("/static/*", s.staticHandler())
-	}
-	// 记录 API（公开只读; Lisp filter + Q 直通）
+// MountAPI 绑定记录 API（公开只读; Lisp filter + Q 直通）。
+func MountAPI(s *Site) {
 	s.Get("/api/nodes/{type}", s.apiNodes)
+}
+
+// MountContent 绑定内容路由（/node/{id|slug}）+ 404 统一出口。
+func MountContent(s *Site) {
 	s.Get("/node/{id}", s.nodeHandler())
-	// 路由未匹配 → 同一 404 出口
 	s.SetNotFound(func(ctx *CmsCtx) { s.render404(ctx) })
 }
 

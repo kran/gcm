@@ -63,7 +63,10 @@ func newAdminSite(t *testing.T) (*web.Site, *core.Service) {
 	os.MkdirAll(tplDir, 0755)
 	os.WriteFile(filepath.Join(tplDir, "node.html"), []byte(`ok`), 0644)
 	eng := render.New(tplDir, svc)
-	s := web.New(svc, eng, "", nil, false)
+	if err := web.DefineRenderHooks(svc); err != nil {
+		t.Fatal(err)
+	}
+	s := web.New(svc, eng)
 	Mount(s, "")
 	return s, svc
 }
