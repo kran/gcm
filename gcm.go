@@ -67,9 +67,15 @@ type Options struct {
 // App 多站点应用: HostMux 按域名分发到各站点。
 type App[T any] struct {
 	site    *web.Site
-	mux     *web.HostMux
 	options Options
 }
+
+// 多站组合: HostMux 重导出（gcm 门面提供; 装配层与站点解耦 —
+// 开发者各自 NewApp 装配 site, 再 mux.Add(hosts, app.Handler()) 组合）。
+type HostMux = web.HostMux
+
+// NewHostMux 建多站分发器（按 Host 头分发; 未知 host 走 fallback）。
+func NewHostMux() *HostMux { return web.NewHostMux() }
 
 // NewApp 装配**一个**站点。每个站点一个 App 实例（各自 PageData 类型 T —
 // 多站点类型不同各自 NewApp）。返回 *App[T]; Handler() 供开发者组合挂载
@@ -81,13 +87,6 @@ func NewApp[T any](opts Options, spec SiteSpec[T]) (*App[T], error) {
 		return nil, fmt.Errorf("gcm: %w", err)
 	}
 	app.site = site
-	// 单站统一入口: hosts 分发 + fallback 兜底（未知 host / IP 直连）
-	mux := web.NewHostMux()
-	if len(spec.Hosts) > 0 {
-		mux.Add(spec.Hosts, site)
-	}
-	mux.SetFallback(site)
-	app.mux = mux
 	return app, nil
 }
 
@@ -177,15 +176,14 @@ func (a *App[T]) loadTypes(spec SiteSpec[T]) (*types.Types, error) {
 	return ts, nil
 }
 
-// Handler 应用入口: 本站 mux（hosts 分发 + fallback 兜底 — 单站/IP 直连也走 mux）。
-// 多站组合: 开发者各自 NewApp, 再 mux.Add(hosts, a.Handler())（mux 可嵌套）。
-func (a *App[T]) Handler() http.Handler { return a.mux }
+// Handler 应用入口: 单站直连 site; 多站组合用 NewHostMux 各自 Add。
+func (a *App[T]) Handler() http.Handler { return a.site }
 
-// Site 站点实例（多站组合/高级装配用 — 直接挂 site 而非嵌套 mux 时）。
+// Site 站点实例（高级装配/组合用）。
 func (a *App[T]) Site() *web.Site { return a.site }
 
-// Listen 监听并服务（经本站 mux）。
+// Listen 监听并服务（单站直连 site）。
 func (a *App[T]) Listen(addr string) error {
 	log.Printf("gcm: listening on %s", addr)
-	return http.ListenAndServe(addr, a.mux)
+	return http.ListenAndServe(addr, a.site)
 }
