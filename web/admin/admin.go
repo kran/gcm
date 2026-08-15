@@ -519,11 +519,11 @@ func (b *backend) inbound(ctx *web.CmsCtx) {
 		return
 	}
 	rows := []struct {
-		ID       int64  `json:"id"`
-		Type     string `json:"type"`
-		Title    string `json:"title"`
-		Slug     string `json:"slug"`
-		ViaField string `json:"via_field"`
+		ID       int64  `db:"from_node" json:"id"`
+		Type     string `db:"type" json:"type"`
+		Title    string `db:"title" json:"title"`
+		Slug     string `db:"slug" json:"slug"`
+		ViaField string `db:"MIN(e.field)" json:"via_field"`
 	}{}
 	// 溯源: 每个来源节点取一条边字段（MIN(field) — GROUP BY 去重）
 	q := b.core.DB().Add(

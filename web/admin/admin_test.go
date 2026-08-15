@@ -25,10 +25,20 @@ import (
 
 const adminTypes = `
 types:
+  category:
+    title: name
+    fields:
+      - { name: name, kind: text }
+      - { name: parent, kind: ref, to: category }
   article:
     fields:
       - { name: body, kind: richtext }
       - { name: authors, kind: "ref[]", to: person }
+      - { name: categories, kind: "ref[]", to: category }
+  video:
+    fields:
+      - { name: body, kind: richtext }
+      - { name: categories, kind: "ref[]", to: category }
   person:
     title: name
     fields:
