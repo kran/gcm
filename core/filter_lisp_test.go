@@ -319,3 +319,39 @@ func TestLispInEdgeTypeDisambiguate(t *testing.T) {
 	}
 
 }
+
+// 通配入边: (edge <-*) 任意来源存在性; (in <-* {:ids}) 来源在集合。
+func TestLispWildcardIn(t *testing.T) {
+	s := newFilterSvc(t)
+	child, _ := s.CreateNode(&Node{Type: "category", Slug: "child", Fields: Fields{"name": "子"}})
+	aid, _ := s.CreateNode(&Node{Type: "article", Status: StatusPublished, Fields: Fields{"title": "甲", "categories": []any{child}}})
+	// 评论也引用 article（comment.article 边）
+	_, _ = s.CreateNode(&Node{Type: "comment", Fields: Fields{"body": "c", "article": aid}})
+
+	exec := func(expr string, params map[string]any) int {
+		t.Helper()
+		q := s.db.Add(`SELECT * FROM nodes WHERE ${where}`)
+		q, err := s.CompileLispInto(q, expr, params)
+		if err != nil {
+			t.Fatalf("compile %q: %v", expr, err)
+		}
+		var rows []Node
+		if err := q.List(&rows); err != nil {
+			t.Fatalf("exec %q: %v", expr, err)
+		}
+		return len(rows)
+	}
+	// 有入边的节点: child(被 article 的 categories 边) + article(被 comment 的 article 边) = 2
+	if n := exec(`(edge <-*)`, nil); n != 2 {
+		t.Fatalf("<-* 存在性: %d", n)
+	}
+	// 通配入边 + 目标谓词 → 报错
+	q := s.db.Add(`SELECT * FROM nodes WHERE ${where}`)
+	if _, err := s.CompileLispInto(q, `(edge <-* (= $x 1))`, nil); err == nil {
+		t.Fatal("<-* 带目标谓词应报错")
+	}
+	// in <-* 通配集合: 来源在 [child]
+	if n := exec(`(in <-* {:ids})`, map[string]any{"ids": []any{child}}); n != 1 {
+		t.Fatalf("in <-* : %d", n)
+	}
+}

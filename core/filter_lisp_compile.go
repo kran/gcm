@@ -270,8 +270,15 @@ func (c *lispCompiler) edgeFn(args []lispExpr) (string, error) {
 		return "", fmt.Errorf("filter-lisp: edge needs ref field with -> or <- prefix, got %q", path)
 	}
 	in := kind == fieldIn
-	if in && refType == "" {
+	if in && refType == "" && field != "*" {
 		return "", fmt.Errorf("filter-lisp: in-edge needs <-type.field (source type explicit), got %q", path)
+	}
+	// 通配入边 <-*: 任意来源（存在性 only — 无宿主, 目标谓词做不了）
+	if in && field == "*" {
+		if len(args) != 1 {
+			return "", fmt.Errorf("filter-lisp: <-* takes no target predicate (source type unknown)")
+		}
+		return c.varRef("EXISTS(SELECT 1 FROM edges WHERE to_node = " + c.link + ")"), nil
 	}
 	joinCol, linkCol := "to_node", "from_node"
 	if in {
@@ -335,7 +342,7 @@ func (c *lispCompiler) inFn(args []lispExpr) (string, error) {
 		return "", err
 	}
 	kind, refType, field := fieldOf(path)
-	if kind == fieldIn && refType == "" {
+	if kind == fieldIn && refType == "" && field != "*" {
 		return "", fmt.Errorf("filter-lisp: in-edge needs <-type.field (source type explicit), got %q", path)
 	}
 
@@ -413,6 +420,9 @@ func (c *lispCompiler) inFieldArg(kind fieldKind, refType, field string) any {
 // inArgs 数组形态参数: [#{1} 字段, #{2|expand} 数组]（入边追加 #{3} 类型）。
 func (c *lispCompiler) inArgs(kind fieldKind, refType, field string, arr []any) []any {
 	if kind == fieldIn {
+		if field == "*" {
+			return []any{arr} // 通配: 只有集合（无 field/type 参数）
+		}
 		return []any{c.inFieldArg(kind, refType, field), arr, refType}
 	}
 	return []any{c.inFieldArg(kind, refType, field), arr}
@@ -431,6 +441,9 @@ func (c *lispCompiler) inSQL(kind fieldKind, refType, field string, arr []any) s
 	case fieldOut:
 		return "EXISTS(SELECT 1 FROM edges WHERE field = #{1} AND from_node = " + c.link + " AND to_node IN (#{2|expand}))"
 	case fieldIn:
+		if field == "*" {
+			return "EXISTS(SELECT 1 FROM edges WHERE to_node = " + c.link + " AND from_node IN (#{1|expand}))"
+		}
 		return "EXISTS(SELECT 1 FROM edges JOIN nodes src ON src.id = edges.from_node WHERE edges.field = #{1} AND edges.to_node = " + c.link + " AND edges.from_node IN (#{2|expand}) AND src.type = #{3})"
 	}
 	return ""

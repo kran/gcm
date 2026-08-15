@@ -90,16 +90,14 @@ func (s *Service) OutEdges(typeName string, from int64, field string, page, size
 		return s.edgePage("field = #{1} AND (from_node = #{2} OR to_node = #{2})",
 			[]any{field, from}, page, size)
 	}
-	return s.edgePage("field = #{1} AND from_node = #{2}",
-		[]any{field, from}, page, size)
+	return s.edgePage("field = #{1} AND from_node = #{2}", []any{field, from}, page, size)
 }
 
 // InEdges 入边列表: 指向 to、按 field 过滤、分页（反向查询 — 边双向, 引擎原语直查）。
 // symmetric 字段: 双向展开（与 OutEdges 同一集合）。
 func (s *Service) InEdges(to int64, field string, page, size int) ([]Edge, int64, error) {
 	// 宽松: 不校验字段（拼错 → 空结果; symmetric 双向由 OutEdges 承担）
-	return s.edgePage("field = #{1} AND to_node = #{2}",
-		[]any{field, to}, page, size)
+	return s.edgePage("field = #{1} AND to_node = #{2}", []any{field, to}, page, size)
 }
 
 // ── 一致性 ─────────────────────────────────────────
