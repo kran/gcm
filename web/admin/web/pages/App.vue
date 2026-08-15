@@ -115,9 +115,28 @@ export default {
                 user.value = await $api.me()
                 phase.value = 'app'
                 loadPanels()   // 站点面板: 动态注册路由 + 菜单
+                loadTreeMenus() // tree 类型独立菜单（view: tree）
             } catch (_) {
                 phase.value = 'login'
             }
+        }
+
+        // tree 类型独立菜单: 每个 view=tree 的类型一个树管理页
+        async function loadTreeMenus() {
+            try {
+                var res = await $api.types()
+                var defs = res.types || {}
+                Object.keys(defs).forEach(function (t) {
+                    if ((defs[t].view || '') !== 'tree') return
+                    var name = 'tree-' + t
+                    router.addRoute({ name: name, path: '/tree/' + t + '/:type?', component: Vue.defineAsyncComponent({
+                        loader: function () { return Panel.loadComponent('pages/tree.vue') },
+                        loadingComponent: { template: '<div style="padding:40px;text-align:center;color:#999;">加载中...</div>' },
+                        delay: 100,
+                    }) })
+                    menuData.value.push({ key: name, label: (defs[t].title || t) + '树', icon: 'Share', route: name })
+                })
+            } catch (e) { console.error('[panel] loadTreeMenus failed:', e) }
         }
 
         // 站点面板: /admin/panels 返回 [{path, title, vue}] — 动态 addRoute + 菜单
