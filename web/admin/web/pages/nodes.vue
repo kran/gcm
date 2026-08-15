@@ -120,6 +120,10 @@
 import FieldRenderer from './FieldRenderer.vue'
 export default {
     name: 'NodesPage',
+    errorCaptured(err, info) {
+        console.error('[nodes] errorCaptured:', err, info)
+        return false
+    },
     components: {
         FieldRenderer,
         NodeOps: Vue.defineAsyncComponent(() => window.Panel.loadComponent('pages/NodeOps.vue')),
@@ -140,7 +144,13 @@ export default {
             createVisible: false,
         }
     },
-    async mounted() { await this.loadTypes() },
+    async mounted() {
+        console.log('[nodes] mounted')
+        try {
+            await this.loadTypes()
+            console.log('[nodes] types loaded:', this.typeNames.length)
+        } catch (e) { console.error('[nodes] loadTypes failed:', e) }
+    },
     methods: {
         // 图标来自类型配置（icon 字段）; 空 = 默认
         typeIcon(t) {

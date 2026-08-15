@@ -23,7 +23,10 @@ window.Panel = (function () {
         moduleCache: { vue: Vue, 'vue-router': VueRouter, '$api': window.$api },
         async getFile(url) {
             var resp = await fetch(url)
-            if (!resp.ok) throw new Error('[panel] fetch failed: ' + url)
+            if (!resp.ok) {
+                console.error('[panel] fetch failed:', resp.status, url)
+                throw new Error('[panel] fetch failed: ' + url)
+            }
             return {
                 getContentData: function (asBinary) {
                     return asBinary ? resp.arrayBuffer() : resp.text()
@@ -41,7 +44,11 @@ window.Panel = (function () {
     }
 
     function loadComponent(url) {
-        return _loadModule(url, _sfcOptions)
+        console.log('[panel] loadComponent:', url)
+        var p = _loadModule(url, _sfcOptions)
+        p.then(function () { console.log('[panel] loaded:', url) })
+         .catch(function (err) { console.error('[panel] load FAILED:', url, err) })
+        return p
     }
 
     // ═══════════════════════════════════════════════════
