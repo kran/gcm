@@ -49,15 +49,19 @@
         </header>
 
         <div class="panel-body">
-            <nav class="panel-rail">
-                <el-tooltip v-for="item in menuData" :key="item.key" :content="item.label"
-                    placement="right">
-                    <div class="rail-item" :class="{ active: route.name === item.route }"
-                        @click="router.push({ name: item.route, params: item.params })">
-                        <el-icon :size="19"><component :is="item.icon" /></el-icon>
+            <!-- 左侧主菜单（默认展开: 图标 + 文字标签） -->
+            <aside class="panel-sidebar expanded">
+                <div class="panel-menu-scroll">
+                    <div class="panel-menu expanded">
+                        <div v-for="item in menuData" :key="item.key" class="menu-item"
+                            :class="{ active: route.name === item.route }"
+                            @click="router.push({ name: item.route, params: item.params })">
+                            <span class="menu-icon"><el-icon :size="18"><component :is="item.icon" /></el-icon></span>
+                            <span>{{ item.label }}</span>
+                        </div>
                     </div>
-                </el-tooltip>
-            </nav>
+                </div>
+            </aside>
 
             <div class="panel-main">
                 <div class="panel-content">
