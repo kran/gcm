@@ -273,12 +273,26 @@ func (c *lispCompiler) edgeFn(args []lispExpr) (string, error) {
 	if in && refType == "" && field != "*" {
 		return "", fmt.Errorf("filter-lisp: in-edge needs <-type.field (source type explicit), got %q", path)
 	}
-	// 通配入边 <-*: 任意来源（存在性 only — 无宿主, 目标谓词做不了）
+	// 通配入边 <-*: 任意来源; 一元=存在性, 二元=开层（谓词在 src 上,
+	// 宽松编译 — 列通用, JSON 不校验 — 执行期才知道对错）
 	if in && field == "*" {
-		if len(args) != 1 {
-			return "", fmt.Errorf("filter-lisp: <-* takes no target predicate (source type unknown)")
+		if len(args) == 1 {
+			return c.varRef("EXISTS(SELECT 1 FROM edges WHERE to_node = " + c.link + ")"), nil
 		}
-		return c.varRef("EXISTS(SELECT 1 FROM edges WHERE to_node = " + c.link + ")"), nil
+		c.depth++
+		alias := fmt.Sprintf("e%d", c.depth)
+		srcAlias := fmt.Sprintf("t%d", c.depth)
+		origRef, origLink := c.nodeRef, c.link
+		c.nodeRef, c.link = srcAlias, srcAlias+".id"
+		frag, _, err := c.call(args[1])
+		c.nodeRef, c.link = origRef, origLink
+		c.depth--
+		if err != nil {
+			return "", err
+		}
+		fragOut := fmt.Sprintf("EXISTS(SELECT 1 FROM edges %s JOIN nodes %s ON %s.id = %s.from_node WHERE %s.to_node = %s AND %s)",
+			alias, srcAlias, srcAlias, alias, alias, c.link, frag)
+		return c.varRef(fragOut), nil
 	}
 	joinCol, linkCol := "to_node", "from_node"
 	if in {

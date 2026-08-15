@@ -345,10 +345,9 @@ func TestLispWildcardIn(t *testing.T) {
 	if n := exec(`(edge <-*)`, nil); n != 2 {
 		t.Fatalf("<-* 存在性: %d", n)
 	}
-	// 通配入边 + 目标谓词 → 报错
-	q := s.db.Add(`SELECT * FROM nodes WHERE ${where}`)
-	if _, err := s.CompileLispInto(q, `(edge <-* (= $x 1))`, nil); err == nil {
-		t.Fatal("<-* 带目标谓词应报错")
+	// 通配入边 + 目标谓词（宽松编译 — 列/JSON 均可, 执行期定对错）
+	if n := exec(`(edge <-* (in id {:ids}))`, map[string]any{"ids": []any{aid}}); n != 1 {
+		t.Fatalf("<-* (in id): %d", n)
 	}
 	// in <-* 通配集合: 来源在 [aid]（article 的 categories 边 → child 被引用）
 	if n := exec(`(in <-* {:ids})`, map[string]any{"ids": []any{aid}}); n != 1 {
