@@ -62,7 +62,7 @@
 <script>
 import { useRoute } from 'vue-router'
 export default {
-    components: { NodeOps: window.Panel.loadComponent('pages/NodeOps.vue') },
+    components: { NodeOps: Vue.defineAsyncComponent(() => window.Panel.loadComponent('pages/NodeOps.vue')) },
     setup() {
         var route = useRoute()
         return { typeName: route.params.type }
