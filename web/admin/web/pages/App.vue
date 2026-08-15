@@ -123,21 +123,13 @@ export default {
             }
         }
 
-        // tree 类型独立菜单: 每个 view=tree 的类型一个树管理页
+        // tree 类型独立菜单: 每个 view=tree 的类型一个树管理页（静态路由 /tree/:type — index.html 注册）
         async function loadTreeMenus() {
             try {
                 var res = await $api.types()
                 var defs = res.types || {}
                 Object.keys(defs).forEach(function (t) {
                     if ((defs[t].view || '') !== 'tree') return
-                    // 统一一个路由 /tree/:type — 菜单点击带 params
-                    if (!router.hasRoute('tree')) {
-                        router.addRoute({ name: 'tree', path: '/tree/:type', component: Vue.defineAsyncComponent({
-                            loader: function () { return Panel.loadComponent('pages/tree.vue') },
-                            loadingComponent: { template: '<div style="padding:40px;text-align:center;color:#999;">加载中...</div>' },
-                            delay: 100,
-                        }) })
-                    }
                     menuData.value.push({ key: 'tree-' + t, label: (defs[t].title || t) + '树',
                         icon: 'Share', route: 'tree', params: { type: t } })
                 })
@@ -158,6 +150,10 @@ export default {
                     }) })
                     menuData.value.push({ key: name, label: p.title, icon: 'Grid', route: name })
                 })
+                // 刷新后 hash 残留动态路由页: 初次渲染时未注册导致失配 — 重新匹配
+                if (route.name === undefined && route.path !== '/') {
+                    router.replace(route.fullPath)
+                }
             } catch (e) { console.error('[panel] loadPanels failed:', e) }
         }
 
