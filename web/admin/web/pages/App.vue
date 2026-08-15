@@ -172,8 +172,13 @@ export default {
         }
 
         onMounted(function () {
+            console.log('[app] mounted, 初始路由:', route.name, route.path, '| hash:', location.hash)
             Panel.onError(function (err) { if (err.status === 401) doLogout() })
             checkAuth()
+        })
+        // 路由变化日志（router-view 渲染谁）
+        router.afterEach(function (to) {
+            console.log('[app] route →', to.name, to.path)
         })
 
         return {
