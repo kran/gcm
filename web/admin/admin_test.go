@@ -68,6 +68,9 @@ func newAdminSite(t *testing.T) (*web.Site, *core.Service) {
 	if err := web.DefineRenderHooks(svc); err != nil {
 		t.Fatal(err)
 	}
+	if err := DefineHooks(svc); err != nil {
+		t.Fatal(err)
+	}
 	s := web.New(svc, eng)
 	Mount(s, "")
 	return s, svc
@@ -340,5 +343,49 @@ func TestListNodesFilter(t *testing.T) {
 	bad := authedReq(t, s, http.MethodGet, "/admin/nodes?type=article&filter=(bogus-fn)", nil)
 	if bad.Code != 400 {
 		t.Fatalf("bad filter must 400, got %d", bad.Code)
+	}
+}
+
+// inbound: 分支子树 in 方向全部节点（无论类型 + 溯源）。
+func TestAdminInbound(t *testing.T) {
+	s, svc := newAdminSite(t)
+	root, _ := svc.CreateNode(&core.Node{Type: "category", Slug: "root", Status: core.StatusPublished,
+		Fields: core.Fields{"name": "根"}})
+	child, _ := svc.CreateNode(&core.Node{Type: "category", Slug: "child", Status: core.StatusPublished,
+		Fields: core.Fields{"name": "子", "parent": root}})
+	svc.CreateNode(&core.Node{Type: "article", Status: core.StatusPublished,
+		Fields: core.Fields{"body": "a", "categories": []any{child}}})
+	svc.CreateNode(&core.Node{Type: "video", Status: core.StatusPublished,
+		Fields: core.Fields{"body": "v", "categories": []any{child}}})
+
+	// 子树（root + child）in 方向: article + video（2 个, 无论类型）
+	rec := authedReq(t, s, http.MethodGet,
+		fmt.Sprintf("/admin/inbound?node=%d&subtree=1", root), nil)
+	var out struct {
+		Items []map[string]any `json:"items"`
+		Total int64            `json:"total"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || rec.Code != 200 {
+		t.Fatalf("inbound: %d %s", rec.Code, rec.Body.String())
+	}
+	if out.Total != 2 {
+		t.Fatalf("inbound total: %d", out.Total)
+	}
+	types := map[string]bool{}
+	for _, it := range out.Items {
+		types[it["type"].(string)] = true
+		if it["via_field"] == nil || it["via_field"] == "" {
+			t.Fatalf("via_field missing: %v", it)
+		}
+	}
+	if !types["article"] || !types["video"] {
+		t.Fatalf("types: %v", types)
+	}
+	// 未登录 → 401
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/admin/inbound?node=%d", root), nil)
+	rec2 := httptest.NewRecorder()
+	s.ServeHTTP(rec2, req)
+	if rec2.Code != http.StatusUnauthorized {
+		t.Fatalf("unauth: %d", rec2.Code)
 	}
 }

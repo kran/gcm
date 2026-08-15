@@ -173,6 +173,7 @@ func Mount(s *web.Site, uploadDir string) {
 			authed.Delete("/nodes/{id}", b.deleteNode)
 			authed.Get("/search", b.search)
 			authed.Get("/tree", b.tree)
+			authed.Get("/inbound", b.inbound)
 			authed.Get("/expand", b.expand)
 			authed.Post("/password", b.changePassword)
 			authed.Get("/settings", b.listSettings)
@@ -474,6 +475,75 @@ func (b *backend) tree(ctx *web.CmsCtx) {
 		})
 	}
 	_ = ctx.Json(http.StatusOK, map[string]any{"items": items})
+}
+
+// toAny int64 切片 → any 切片（dba expand 参数）。
+func toAny(ids []int64) []any {
+	out := make([]any, len(ids))
+	for i, id := range ids {
+		out[i] = id
+	}
+	return out
+}
+
+// inbound 分支子树 in 方向全部节点（无论类型 + 溯源）:
+// 参数: node(分支节点), subtree=1(含子树), page, size
+// 返回: {items: [{id, type, title, slug, via_field}], total}
+func (b *backend) inbound(ctx *web.CmsCtx) {
+	nodeID := int64(ctx.QueryInt("node", 0))
+	if nodeID == 0 {
+		ctx.Error(http.StatusBadRequest, "node required")
+		return
+	}
+	page := ctx.QueryInt("page", 1)
+	size := ctx.QueryInt("size", 20)
+	ids := []int64{nodeID}
+	if ctx.Query("subtree") == "1" {
+		// 分支节点类型 → Subtree（图原语）
+		n, err := b.core.GetNodeById(nodeID)
+		if err != nil || n == nil {
+			ctx.Error(http.StatusBadRequest, "node not found")
+			return
+		}
+		tree, err := b.core.Subtree(n.Type, nodeID, "parent", 20)
+		if err == nil {
+			ids = append(ids, tree...)
+		}
+	}
+	// in 方向全部节点（无论类型）+ 溯源字段; 分页
+	var total int64
+	if _, err := b.core.DB().Add(
+		`SELECT COUNT(DISTINCT e.from_node) FROM edges e JOIN nodes n ON n.id = e.from_node
+		 WHERE e.to_node IN (#{1|expand})`, toAny(ids)).Get(&total); err != nil {
+		b.internal(ctx, err)
+		return
+	}
+	rows := []struct {
+		ID       int64  `json:"id"`
+		Type     string `json:"type"`
+		Title    string `json:"title"`
+		Slug     string `json:"slug"`
+		ViaField string `json:"via_field"`
+	}{}
+	// 溯源: 每个来源节点取一条边字段（MIN(field) — GROUP BY 去重）
+	q := b.core.DB().Add(
+		`SELECT e.from_node, n.type, n.title, n.slug, MIN(e.field) FROM edges e JOIN nodes n ON n.id = e.from_node
+		 WHERE e.to_node IN (#{1|expand})
+		 GROUP BY e.from_node
+		 ORDER BY n.sort, n.id DESC
+		 LIMIT #{2} OFFSET #{3}`,
+		toAny(ids), size, (page-1)*size)
+	if err := q.List(&rows); err != nil {
+		b.internal(ctx, err)
+		return
+	}
+	items := make([]map[string]any, 0, len(rows))
+	for _, r := range rows {
+		items = append(items, map[string]any{
+			"id": r.ID, "type": r.Type, "title": r.Title, "slug": r.Slug, "via_field": r.ViaField,
+		})
+	}
+	_ = ctx.Json(http.StatusOK, map[string]any{"items": items, "total": total})
 }
 
 // expand 引用展开预览（ExpandPath）: expr 为空 = 该类型全部 ref 字段一层全景。
