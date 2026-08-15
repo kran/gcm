@@ -266,7 +266,7 @@ func (b *backend) listNodes(ctx *web.CmsCtx) {
 	var err error
 	filter := strings.TrimSpace(ctx.Query("filter"))
 	q := strings.TrimSpace(ctx.Query("q"))
-	// filter = Lisp 表达式; q = 标题模糊（合成 (like title {:q})）
+	// filter = Lisp 表达式; q = 标题模糊; status = 状态过滤（1 发布/0 草稿）
 	params := map[string]any{}
 	if q != "" {
 		params["q"] = "%" + q + "%"
@@ -276,10 +276,18 @@ func (b *backend) listNodes(ctx *web.CmsCtx) {
 			filter = "(like title {:q})"
 		}
 	}
-	// 统一 Q: 类型过滤合成（filter 空时仅 (= type "x")）
-	f := `(= type "` + typ + `")`
+	if st := ctx.Query("status"); st != "" {
+		n, err := strconv.Atoi(st)
+		if err == nil {
+			params["st"] = n
+			filter = "(and (= status {:st}) " + filter + ")" // status 过滤
+		}
+	}
+	// 统一 Q: 类型过滤合成（参数化 (= type {:typ})）
+	params["typ"] = typ
+	f := `(= type {:typ})`
 	if filter != "" {
-		f = `(and (= type "` + typ + `") ` + filter + `)`
+		f = `(and (= type {:typ}) ` + filter + `)`
 	}
 	list, total, err = b.core.Q(core.ListQuery{Filter: f, Page: page, Size: size}, params)
 	if err != nil {

@@ -20,8 +20,12 @@ import (
 var FS embed.FS
 
 // Up 对 db 执行全部待应用迁移（gcm 内置表: nodes/edges/settings/admin）。失败响亮报错。
+// gcm 内置迁移版本表名（与站点业务表迁移错开）。
+const gcmVersionTable = "migr_gcm"
+
 func Up(db *dba.SQL) error {
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.Pool().DB, FS)
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db.Pool().DB, FS,
+		goose.WithTableName(gcmVersionTable))
 	if err != nil {
 		return fmt.Errorf("migrations: provider: %w", err)
 	}

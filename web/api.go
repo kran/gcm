@@ -74,15 +74,15 @@ func (s *Site) apiNodes(ctx *CmsCtx) {
 	size := ctx.QueryInt("size", 20)
 	expand := strings.TrimSpace(ctx.Query("expand"))
 
-	// 类型过滤由 API 层构建（{type} 路径参数 → (= type "x")）
+	// 类型过滤由 API 层构建（{type} 路径参数 → (= type {:typ}) 参数化）
 	f := filter
 	if f != "" {
-		f = `(and (= type "` + typ + `") ` + f + `)`
+		f = `(and (= type {:typ}) ` + f + `)`
 	} else {
-		f = `(= type "` + typ + `")`
+		f = `(= type {:typ})`
 	}
 	q := core.ListQuery{Filter: f, Sort: sort, Expand: expand, Page: page, Size: size}
-	list, total, err := s.svc.Q(q, nil)
+	list, total, err := s.svc.Q(q, map[string]any{"typ": typ})
 	if err != nil {
 		// filter 编译错误（语法/未知字段/未知函数）— fail-loud 400
 		ctx.String(http.StatusBadRequest, "api: "+err.Error())

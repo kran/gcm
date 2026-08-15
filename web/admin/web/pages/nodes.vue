@@ -16,28 +16,6 @@
       </div>
     </div>
 
-    <!-- 树过滤栏（当前类型有指向树结构的 ref 字段时显示） -->
-    <div v-if="filterTree.def" class="nodes-tree" style="width:180px;">
-      <div class="nodes-tree-header">
-        <span style="font-weight:600;font-size:14px;">按{{ filterTree.label }}过滤</span>
-        <el-button v-if="filterTree.active" link type="primary" size="small" @click="clearTreeFilter">清除</el-button>
-      </div>
-      <div class="type-list" style="padding:0;">
-        <div class="type-item" :class="{ active: filterTree.active === 0 }" @click="clearTreeFilter">
-          <span>全部</span>
-        </div>
-        <el-tree :data="filterTree.nodes" node-key="id" default-expand-all
-                 :expand-on-click-node="false" highlight-current
-                 :current-node-key="filterTree.active" @node-click="onTreeClick">
-          <template #default="{ data }">
-            <span class="tree-node-label" :style="{ fontWeight: filterTree.active === data.id ? 700 : 400 }">
-              {{ titleOf(data) }}
-            </span>
-          </template>
-        </el-tree>
-      </div>
-    </div>
-
     <!-- 右侧列表 -->
     <div class="nodes-list">
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
@@ -49,6 +27,27 @@
         </el-select>
         <el-input v-model="query.q" placeholder="搜索标题/别名" size="small" style="width:180px"
                   clearable @change="refresh" />
+        <!-- 树过滤（多个: 每个树引用字段一个 popover 下拉, 按目标类型名区分） -->
+        <el-popover v-for="ft in filterTrees" :key="ft.field" trigger="click" placement="bottom-start"
+                    :width="200" style="margin-left:8px;" :ref="'tp-' + ft.field">
+          <template #reference>
+            <el-button size="small" :type="ft.active ? 'primary' : ''">
+              {{ ft.active ? (ft.activeLabel + ' ✕') : ('按' + ft.label + '过滤') }}
+            </el-button>
+          </template>
+          <div style="max-height:300px;overflow:auto;">
+            <div class="type-item" :class="{ active: ft.active === 0 }" @click="clearTreeFilter(ft)">
+              <span>全部</span>
+            </div>
+            <el-tree :data="ft.nodes" node-key="id" default-expand-all
+                     :expand-on-click-node="false" highlight-current
+                     :current-node-key="ft.active" @node-click="(n) => selectTreeNode(ft, n)">
+              <template #default="{ data }">
+                <span class="tree-node-label" style="font-size:13px;">{{ titleOf(data) }}</span>
+              </template>
+            </el-tree>
+          </div>
+        </el-popover>
         <el-button size="small" @click="refresh">刷新</el-button>
         <el-button type="primary" size="small" :disabled="!query.type" @click="createVisible = true">
           新建 {{ query.type || '' }}
@@ -140,7 +139,7 @@ export default {
             treeMode: false,
             treeNodes: [],
             parentField: 'parent',
-            filterTree: { def: null, field: '', label: '', nodes: [], active: 0 },
+            filterTrees: [],   // 多个树过滤: [{def, field, label, nodes, active, activeLabel}]
             query: { type: '', status: null, q: '', page: 1, size: 20 },
             createVisible: false,
         }
@@ -184,10 +183,10 @@ export default {
                 this.treeNodes = this.buildTree(res.items || [], this.parentField)
             } finally { this.loading = false }
         },
-        // 树过滤: 当前类型的 ref 字段指向"有树结构"类型时, 提供按树过滤。
-        // 点击树节点 → DFS 子树 id 集合 → filter "{field} ~ [ids]" → 刷新列表。
-        async setupFilterTree(def) {
-            this.filterTree = { def: null, field: '', label: '', nodes: [], active: 0 }
+        // 树过滤: 当前类型的全部"指向树结构"的 ref 字段, 每个一个过滤下拉。
+        // 多树 AND 组合: (and (in ->f1 [ids]) (in ->f2 [ids]))
+        setupFilterTree(def) {
+            this.filterTrees = []
             if (!def) return
             const name = def.name
             for (const f of def.fields || []) {
@@ -195,34 +194,54 @@ export default {
                 if (f.to === name) continue // 自身自引用: 列表即树（treeMode）, 过滤栏多余
                 const tdef = this.typeDefs[f.to]
                 if (tdef && this.selfRefField(tdef)) {
-                    this.filterTree = { def: tdef, field: f.name, label: f.label || f.name, nodes: [], active: 0 }
-                    this.loadFilterTree(f.to)
-                    return // 第一个树引用字段
+                    const ft = { def: tdef, field: f.name, label: f.to, nodes: [], active: 0, activeLabel: '' }
+                    this.filterTrees.push(ft)
+                    this.loadFilterTree(ft, f.to)
                 }
             }
         },
-        async loadFilterTree(typeName) {
+        async loadFilterTree(ft, typeName) {
             try {
                 const res = await window.$api.get('/admin/tree', { type: typeName })
-                const pf = this.selfRefField(this.filterTree.def) || 'parent'
-                this.filterTree.nodes = this.buildTree(res.items || [], pf)
+                const pf = this.selfRefField(ft.def) || 'parent'
+                ft.nodes = this.buildTree(res.items || [], pf)
             } catch (_) {}
         },
-        // 点击树节点: 子树集合 → filter 刷新列表（Lisp: 引用集合 in + 数组字面量）
-        onTreeClick(n) {
-            if (this.filterTree.active === n.id) return
-            this.filterTree.active = n.id
-            const ids = this.collectSubtree(n)
-            this.query.filter = '(in ->' + this.filterTree.field + ' [' + ids.join(' ') + '])'
+        // 点击树节点: 子树集合 → 该字段过滤; 多字段 AND 组合
+        onTreeClick(ft, n) {
+            ft.active = n.id
+            ft.activeLabel = this.titleOf(n)
+            ft._ids = this.collectSubtree(n)
+            this.query.filter = this.combineTreeFilters()
             this.query.page = 1
             this.refresh()
         },
-        clearTreeFilter() {
-            if (this.filterTree.active === 0 && !this.query.filter) return
-            this.filterTree.active = 0
-            this.query.filter = ''
+        clearTreeFilter(ft) {
+            ft.active = 0
+            ft.activeLabel = ''
+            ft._ids = null
+            this.query.filter = this.combineTreeFilters()
             this.query.page = 1
             this.refresh()
+        },
+        selectTreeNode(ft, n) {
+            this.onTreeClick(ft, n)
+            this.closeTreePopover(ft)
+        },
+        closeTreePopover(ft) {
+            const ref = this.$refs['tp-' + ft.field]
+            if (ref && ref[0]) ref[0].hide()
+        },
+        combineTreeFilters() {
+            const parts = []
+            for (const ft of this.filterTrees) {
+                if (ft._ids && ft._ids.length) {
+                    parts.push('(in ->' + ft.field + ' [' + ft._ids.join(' ') + '])')
+                }
+            }
+            if (parts.length === 0) return ''
+            if (parts.length === 1) return parts[0]
+            return '(and ' + parts.join(' ') + ')'
         },
         collectSubtree(n) {
             const ids = [n.id]

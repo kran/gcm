@@ -162,10 +162,14 @@ func (e *Engine) queryFuncs() template.FuncMap {
 		// filterList: Lisp filter 筛选列表（表达式 + 分页）。
 		// 用法: {{ filterList "article" "(and (= status 1) (in categories (subtree {:slug})))" (dict "slug" "x") 1 10 }}
 		"filterList": func(typ, expr string, params map[string]any, page, size int) []core.Node {
-			// typ 合成进 filter（(= type "x")）— 类型过滤由使用方构建
+			// typ 合成进 filter（参数化 (= type {:typ})）
 			f := expr
+			if params == nil {
+				params = map[string]any{}
+			}
 			if typ != "" {
-				f = `(and (= type "` + typ + `") ` + expr + `)`
+				params["typ"] = typ
+				f = `(and (= type {:typ}) ` + expr + `)`
 			}
 			list, _, err := e.core.Q(core.ListQuery{Filter: f, Page: page, Size: size}, params)
 			fail(err)

@@ -48,6 +48,11 @@
                     :model-value="get(f.name)" @update:model-value="set(f.name, $event)" />
                 <rich-editor v-else-if="f.kind === 'richtext'" :model-value="get(f.name) || ''"
                     @update:model-value="set(f.name, $event)" />
+                <el-select v-else-if="f.kind === 'select'" :model-value="get(f.name)"
+                           placeholder="请选择" style="width:100%;"
+                           @update:model-value="set(f.name, $event)">
+                    <el-option v-for="o in f.options || []" :key="o" :label="o" :value="o" />
+                </el-select>
                 <el-input-number v-else-if="f.kind === 'number'" :model-value="get(f.name)"
                     @update:model-value="set(f.name, $event)" style="width:200px;" />
                 <el-switch v-else-if="f.kind === 'bool'" :model-value="!!get(f.name)"

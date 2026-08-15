@@ -53,16 +53,16 @@
             <aside class="panel-sidebar expanded">
                 <div class="panel-menu-scroll">
                     <div class="panel-menu expanded">
-                        <!-- 固定菜单（内置: 内容管理/配置/账号） -->
-                        <div v-for="item in mainMenu" :key="item.key" class="menu-item"
+                        <!-- 动态菜单（tree 类型/面板）— 最上面 -->
+                        <div v-for="item in extraMenu" :key="item.key" class="menu-item"
                             :class="{ active: route.name === item.route }"
                             @click="router.push({ name: item.route, params: item.params })">
                             <span class="menu-icon"><el-icon :size="18"><component :is="item.icon" /></el-icon></span>
                             <span>{{ item.label }}</span>
                         </div>
-                        <!-- 动态菜单（tree 类型/面板）— 分隔线 -->
+                        <!-- 固定菜单（内置: 内容管理/配置/账号）— 分隔线 -->
                         <div v-if="extraMenu.length" class="menu-divider" />
-                        <div v-for="item in extraMenu" :key="item.key" class="menu-item"
+                        <div v-for="item in mainMenu" :key="item.key" class="menu-item"
                             :class="{ active: route.name === item.route }"
                             @click="router.push({ name: item.route, params: item.params })">
                             <span class="menu-icon"><el-icon :size="18"><component :is="item.icon" /></el-icon></span>
@@ -146,7 +146,7 @@ export default {
                 var defs = res.types || {}
                 Object.keys(defs).forEach(function (t) {
                     if ((defs[t].view || '') !== 'tree') return
-                    menuData.value.push({ key: 'tree-' + t, label: t + ' tree', section: 'tree',
+                    menuData.value.push({ key: 'tree-' + t, label: t, section: 'tree',
                         icon: 'Share', route: 'tree', params: { type: t } })
                 })
             } catch (e) { console.error('[panel] loadTreeMenus failed:', e) }

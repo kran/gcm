@@ -7,14 +7,8 @@
                     <span style="font-weight:600;font-size:14px;">{{ typeName }} tree</span>
                     <el-button link type="primary" size="small" @click="loadTree">刷新</el-button>
                 </div>
-                <div style="max-height:70vh;overflow:auto;margin-top:8px;">
-                    <el-tree :data="treeNodes" node-key="id" default-expand-all
-                             :expand-on-click-node="false" highlight-current
-                             :current-node-key="activeId" @node-click="onNodeClick">
-                        <template #default="{ data }">
-                            <span class="tree-node-label" style="font-size:13px;">{{ titleOf(data) }}</span>
-                        </template>
-                    </el-tree>
+                <div style="margin-top:8px;">
+                    <cat-tree :nodes="treeNodes" :active-id="activeId" @select="onNodeClick" />
                     <div v-if="!treeNodes.length" style="color:#9ca3af;padding:20px;text-align:center;">空</div>
                 </div>
             </div>
@@ -28,17 +22,23 @@
                         含子树
                     </el-checkbox>
                     <span v-if="total" style="color:#9ca3af;font-size:12px;">共 {{ total }} 条</span>
-                    <span style="margin-left:auto;">
-                        <el-dropdown v-if="refTypes.length" split-button type="primary" size="small"
-                                     @click="onCreateType(refTypes[0])" @command="onCreateType">
-                            {{ '新建 ' + refTypes[0] }}
-                            <el-dropdown-menu>
-                                <el-dropdown-item v-for="t in refTypes" :key="t" :command="t">{{ t }}</el-dropdown-item>
-                            </el-dropdown-menu>
-                        </el-dropdown>
+                    <span v-if="refTypes.length" style="margin-left:auto;" class="split-btn">
+                        <!-- 主按钮: 直接建默认类型（连体拆分按钮样式） -->
+                        <el-button type="primary" size="small" class="split-main"
+                                   @click="onCreateType(refTypes[0])">新建 {{ refTypes[0] }}</el-button><el-popover ref="typePopover" placement="bottom-end" trigger="click" width="120">
+                            <template #reference>
+                                <el-button type="primary" size="small" class="split-arrow">
+                                    <el-icon><ArrowDown /></el-icon>
+                                </el-button>
+                            </template>
+                            <div class="type-menu">
+                                <div v-for="t in refTypes" :key="t" class="type-menu-item"
+                                     @click="onCreateType(t); hidePopover()">{{ t }}</div>
+                            </div>
+                        </el-popover>
                     </span>
                 </div>
-                <el-table :data="rows" v-loading="loading" border stripe size="small" max-height="65vh">
+                <el-table :data="rows" v-loading="loading" border stripe size="small">
                     <el-table-column prop="id" label="ID" width="70" />
                     <el-table-column label="类型" width="110">
                         <template #default="{ row }">
@@ -79,6 +79,7 @@ export default {
     components: {
         NodeOps: Vue.defineAsyncComponent(() => window.Panel.loadComponent('pages/NodeOps.vue')),
         NodeEditDialog: Vue.defineAsyncComponent(() => window.Panel.loadComponent('pages/NodeEditDialog.vue')),
+        CatTree: Vue.defineAsyncComponent(() => window.Panel.loadComponent('pages/CatTree.vue')),
     },
     setup() {
         var route = useRoute()
@@ -128,11 +129,13 @@ export default {
             try {
                 var res = await $api.get('/admin/tree', { type: this.typeName })
                 this.treeNodes = this.buildTree(res.items || [], 'parent')
-            } catch (_) {}
+                console.log('[tree] nodes:', this.treeNodes.length, JSON.parse(JSON.stringify(this.treeNodes.slice(0, 3))))
+            } catch (e) { console.error('[tree] loadTree failed:', e) }
         },
         buildTree(items, parentField) {
             var map = {}
-            items.forEach(function (n) { map[n.id] = { ...n, children: [] } })
+            var me = this
+            items.forEach(function (n) { map[n.id] = { ...n, label: me.titleOf(n), children: [] } })
             var roots = []
             items.forEach(function (n) {
                 var node = map[n.id]
@@ -149,6 +152,7 @@ export default {
             walk(n)
             return ids
         },
+        hidePopover() { this.$refs.typePopover && this.$refs.typePopover.hide() },
         onCreateType(t) {
             this.createType = t
             // 预置字段: 该类型指向本 tree 类型的第一个 ref 字段
@@ -182,3 +186,21 @@ export default {
     },
 }
 </script>
+
+<style>
+/* tree 页: 连体拆分按钮（全局 — popover teleport 到 body） */
+.split-btn .el-button.split-main { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.split-btn .el-button.split-arrow {
+    border-top-left-radius: 0; border-bottom-left-radius: 0;
+    margin-left: 0 !important;                     /* el-button 相邻默认 margin 清除 */
+    border-left: 1px solid rgba(255,255,255,.35);
+    padding: 8px 10px;
+}
+.split-btn .el-button + .el-button { margin-left: 0 !important; }
+/* 类型下拉菜单 */
+.type-menu-item {
+    padding: 5px 10px; font-size: 13px; color: #606266; cursor: pointer;
+    border-radius: 4px; white-space: nowrap; line-height: 1.4;
+}
+.type-menu-item:hover { background: #ecf5ff; color: #409eff; }
+</style>

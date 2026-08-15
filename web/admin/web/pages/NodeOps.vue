@@ -1,12 +1,13 @@
 <template>
     <div style="display:inline-flex;gap:4px;">
-        <el-button v-if="showCreate" link size="small" @click="openCreate()">新建子</el-button>
+        <el-button v-if="showCreate" link size="small" @click="openCreate()">新建子级</el-button>
         <el-button link type="primary" size="small" @click="openEdit">编辑</el-button>
         <el-button link size="small" @click="openExpand">引用</el-button>
         <el-button link type="danger" size="small" @click="doDelete">删除</el-button>
     </div>
     <node-edit-dialog v-model:visible="editVisible" :node="node" :type-name="typeName"
                       :preset-field="'parent'" :preset-value="parentId"
+                      :preset-label="parentLabel"
                       :is-edit="isEdit" :defs="defs" @changed="$emit('changed')" />
 
     <!-- 引用展开预览 -->
@@ -37,6 +38,11 @@
 export default {
     name: 'NodeOps',
     components: { NodeEditDialog: Vue.defineAsyncComponent(() => window.Panel.loadComponent('pages/NodeEditDialog.vue')) },
+    computed: {
+        parentLabel() {
+            return window.$api.refLabel(this.node, this.defs[this.node.type] || null) + ' #' + this.node.id
+        },
+    },
     props: {
         node: { type: Object, required: true },      // 行数据（含 id/type）
         defs: { type: Object, default: () => ({}) }, // 类型定义表（titleOf/refLabel 用）

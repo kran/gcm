@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 
 	"gopkg.in/yaml.v3"
@@ -41,8 +42,9 @@ type FieldDef struct {
 	Kind  string `yaml:"kind" json:"kind"`
 	To    string `yaml:"to" json:"to"` // ref/ref[]: 目标类型名
 	// 复合字段（结构语法, 非值类型 — 不进 kinds 注册表）:
-	Item        *FieldDef  `yaml:"item,omitempty" json:"item,omitempty"`     // kind=array: 元素定义（递归）
-	Fields      []FieldDef `yaml:"fields,omitempty" json:"fields,omitempty"` // kind=object: 子字段（递归）
+	Options     []string   `yaml:"options,omitempty" json:"options,omitempty"` // kind=select: 可选项
+	Item        *FieldDef  `yaml:"item,omitempty" json:"item,omitempty"`       // kind=array: 元素定义（递归）
+	Fields      []FieldDef `yaml:"fields,omitempty" json:"fields,omitempty"`   // kind=object: 子字段（递归）
 	Required    bool       `yaml:"required" json:"required"`
 	Symmetric   bool       `yaml:"symmetric" json:"symmetric"`     // 对称: 存一次查双向
 	Transitive  bool       `yaml:"transitive" json:"transitive"`   // 传递: 可达性遍历
@@ -72,6 +74,7 @@ func defaultKinds() []Kind {
 		richtextKind{},
 		numberKind{},
 		boolKind{},
+		selectKind{},
 		imageKind{},
 		fileKind{},
 		refKind{},
@@ -403,6 +406,13 @@ func (t *Types) ValidateValue(typeName string, f FieldDef, v any) error {
 	}
 	if err := k.Validate(v); err != nil {
 		return fmt.Errorf("types: %q.%s: %w", typeName, f.Name, err)
+	}
+	// select: 值必须在 options 内
+	if f.Kind == KindSelect {
+		s, _ := v.(string)
+		if !slices.Contains(f.Options, s) {
+			return fmt.Errorf("types: %q.%s: %q not in options %v", typeName, f.Name, s, f.Options)
+		}
 	}
 	return nil
 }

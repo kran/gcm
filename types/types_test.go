@@ -437,3 +437,25 @@ types:
 		t.Fatalf("valid: %v", err)
 	}
 }
+
+// select kind: options 必填/去重; 值必须在 options 内。
+func TestSelectKind(t *testing.T) {
+	ts := New()
+	// 无 options 拒绝
+	if err := ts.Load([]byte("types:\n  x:\n    fields:\n      - { name: t, kind: select }\n")); err == nil {
+		t.Fatal("select 无 options 应拒绝")
+	}
+	// 合法
+	ts2 := New()
+	if err := ts2.Load([]byte("types:\n  x:\n    fields:\n      - { name: t, kind: select, options: [a, b] }\n")); err != nil {
+		t.Fatal(err)
+	}
+	// 值在 options 内 ✓
+	if err := ts2.ValidateFields("x", map[string]any{"t": "a"}); err != nil {
+		t.Fatal(err)
+	}
+	// 值不在 options 内 ✗
+	if err := ts2.ValidateFields("x", map[string]any{"t": "c"}); err == nil {
+		t.Fatal("值不在 options 应拒绝")
+	}
+}
