@@ -117,6 +117,7 @@
     </div>
 
 <script>
+console.log('[nodes] script executed')
 export default {
     name: 'NodesPage',
     errorCaptured(err, info) {
