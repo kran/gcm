@@ -350,8 +350,8 @@ func TestLispWildcardIn(t *testing.T) {
 	if _, err := s.CompileLispInto(q, `(edge <-* (= $x 1))`, nil); err == nil {
 		t.Fatal("<-* 带目标谓词应报错")
 	}
-	// in <-* 通配集合: 来源在 [child]
-	if n := exec(`(in <-* {:ids})`, map[string]any{"ids": []any{child}}); n != 1 {
+	// in <-* 通配集合: 来源在 [aid]（article 有 categories/authors 出边 → child+zhang 被引用）
+	if n := exec(`(in <-* {:ids})`, map[string]any{"ids": []any{aid}}); n != 2 {
 		t.Fatalf("in <-* : %d", n)
 	}
 }
