@@ -22,7 +22,9 @@ window.Panel = (function () {
     var _sfcOptions = {
         moduleCache: { vue: Vue, 'vue-router': VueRouter, '$api': window.$api },
         async getFile(url) {
-            var resp = await fetch(url)
+            // 缓存破坏: 开发期改 .vue 即生效（fetch 不受强缓存影响）
+            var bustUrl = url + (url.indexOf('?') >= 0 ? '&' : '?') + '_t=' + Date.now()
+            var resp = await fetch(bustUrl, { cache: 'no-store' })
             if (!resp.ok) {
                 console.error('[panel] fetch failed:', resp.status, url)
                 throw new Error('[panel] fetch failed: ' + url)
