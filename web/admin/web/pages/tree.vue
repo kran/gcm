@@ -4,7 +4,7 @@
             <!-- 树: 该类型全量 -->
             <div class="nodes-tree" style="width:220px;">
                 <div class="nodes-tree-header">
-                    <span style="font-weight:600;font-size:14px;">{{ def?.title || typeName }}树</span>
+                    <span style="font-weight:600;font-size:14px;">{{ typeName }} tree</span>
                     <el-button link type="primary" size="small" @click="loadTree">刷新</el-button>
                 </div>
                 <div style="max-height:70vh;overflow:auto;">
