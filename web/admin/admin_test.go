@@ -378,7 +378,8 @@ func TestAdminInbound(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || rec.Code != 200 {
 		t.Fatalf("inbound: %d %s", rec.Code, rec.Body.String())
 	}
-	if out.Total != 2 {
+	// 子树 in 方向: child(parent 边来源) + article + video（无论类型 = 3）
+	if out.Total != 3 {
 		t.Fatalf("inbound total: %d", out.Total)
 	}
 	types := map[string]bool{}
@@ -388,7 +389,7 @@ func TestAdminInbound(t *testing.T) {
 			t.Fatalf("via_field missing: %v", it)
 		}
 	}
-	if !types["article"] || !types["video"] {
+	if !types["article"] || !types["video"] || !types["category"] {
 		t.Fatalf("types: %v", types)
 	}
 	// 未登录 → 401
