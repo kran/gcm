@@ -29,7 +29,7 @@
 // v-model:visible 控制显隐; @changed 保存成功后通知。
 export default {
     name: 'NodeEditDialog',
-    components: { FieldRenderer: window.Panel.loadComponent('pages/FieldRenderer.vue') },
+    components: { FieldRenderer: Vue.defineAsyncComponent(() => window.Panel.loadComponent('pages/FieldRenderer.vue')) },
     props: {
         visible: { type: Boolean, required: true },
         node: { type: Object, default: () => ({}) },   // 编辑: 行数据（含 id/type）

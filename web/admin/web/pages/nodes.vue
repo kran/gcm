@@ -122,8 +122,8 @@ export default {
     name: 'NodesPage',
     components: {
         FieldRenderer,
-        NodeOps: window.Panel.loadComponent('pages/NodeOps.vue'),
-        NodeEditDialog: window.Panel.loadComponent('pages/NodeEditDialog.vue'),
+        NodeOps: Vue.defineAsyncComponent(() => window.Panel.loadComponent('pages/NodeOps.vue')),
+        NodeEditDialog: Vue.defineAsyncComponent(() => window.Panel.loadComponent('pages/NodeEditDialog.vue')),
     },
     data() {
         return {
