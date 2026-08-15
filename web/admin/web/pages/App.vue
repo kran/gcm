@@ -114,9 +114,11 @@ export default {
             try {
                 user.value = await $api.me()
                 phase.value = 'app'
+                console.log('[app] checkAuth ok, phase=app, route=', route.name, route.path)
                 loadPanels()   // 站点面板: 动态注册路由 + 菜单
                 loadTreeMenus() // tree 类型独立菜单（view: tree）
             } catch (_) {
+                console.log('[app] checkAuth failed → login')
                 phase.value = 'login'
             }
         }
