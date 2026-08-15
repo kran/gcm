@@ -50,7 +50,7 @@
         <el-input v-model="query.q" placeholder="搜索标题/别名" size="small" style="width:180px"
                   clearable @change="refresh" />
         <el-button size="small" @click="refresh">刷新</el-button>
-        <el-button type="primary" size="small" :disabled="!query.type" @click="openCreate">
+        <el-button type="primary" size="small" :disabled="!query.type" @click="createVisible = true">
           新建 {{ query.type || '' }}
         </el-button>
       </div>
@@ -71,12 +71,10 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="230" fixed="right">
           <template #default="{ row: r }">
-            <el-button link type="primary" size="small" @click="openEdit(r)">编辑</el-button>
-            <el-button link size="small" @click="openCreateChild(r)">新建子</el-button>
-            <el-button link size="small" @click="openExpand(r)">引用</el-button>
-            <el-button link type="danger" size="small" @click="doDelete(r)">删除</el-button>
+            <node-ops :node="r" :defs="typeDefs" :type-name="query.type" show-create
+                      :parent-id="r.id" @changed="refresh" />
           </template>
         </el-table-column>
       </el-table>
@@ -100,12 +98,13 @@
         <el-table-column label="更新时间" width="165">
           <template #default="{ row: r }">{{ fmt(r.updated_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="140" fixed="right">
+        <el-table-column label="操作" width="170" fixed="right">
           <template #default="{ row: r }">
-            <el-button link type="primary" size="small" @click="openEdit(r)">编辑</el-button>
-            <el-button link size="small" @click="openExpand(r)">引用</el-button>
-            <el-button link type="danger" size="small" @click="doDelete(r)">删除</el-button>
-          </template>
+            <node-ops :node="r" :defs="typeDefs" :type-name="query.type" @changed="refresh" />
+              <!-- 页面级新建（行编辑走 NodeOps） -->
+    <node-edit-dialog :visible="createVisible" :type-name="query.type" :defs="typeDefs"
+                      @close="createVisible = false" @changed="refresh" />
+</template>
         </el-table-column>
       </el-table>
 
@@ -115,57 +114,6 @@
                        @current-change="onPageChange" />
       </div>
     </div>
-
-    <!-- 新建/编辑 -->
-    <el-dialog v-model="dialog.visible" :title="dialog.isEdit ? '编辑 #' + dialog.id : '新建 ' + query.type"
-               width="80vw">
-      <el-form>
-        <el-form-item label="slug">
-          <el-input v-model="dialog.form.slug" placeholder="URL 段（留空 = /node/{id}）" />
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-radio-group v-model="dialog.form.status">
-            <el-radio :value="1">已发布</el-radio>
-            <el-radio :value="0">草稿</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="排序">
-          <el-input-number v-model="dialog.form.sort" :min="0" />
-        </el-form-item>
-        <el-divider style="margin:8px 0 16px;" />
-        <field-renderer v-if="dialog.def" :fields="dialog.def.fields" v-model="dialog.form.fields"
-                        :ref-preset="dialog.form.refPreset || {}" :defs="typeDefs" />
-      </el-form>
-      <template #footer>
-        <el-button @click="dialog.visible = false">取消</el-button>
-        <el-button type="primary" :loading="dialog.saving" @click="save">保存</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 引用展开预览 -->
-    <el-dialog v-model="expandDialog.visible" title="引用展开" width="60vw">
-      <div v-loading="expandDialog.loading" style="min-height:120px;">
-        <template v-if="expandDialog.node">
-          <div v-if="!expandDialog.fields.length" style="color:#9ca3af;padding:20px;text-align:center;">
-            该类型没有引用字段
-          </div>
-          <div v-for="field in expandDialog.fields" :key="field" style="margin-bottom:16px;">
-            <div style="font-weight:600;font-size:14px;color:#409eff;margin-bottom:6px;">{{ field }}</div>
-            <div v-for="n in expandItems(expandDialog.node.expand[field])" :key="n.id"
-                 style="padding:8px 12px;background:#f9fafb;border-radius:6px;margin-bottom:4px;display:flex;align-items:center;gap:8px;">
-              <el-tag size="small">{{ n.type }}</el-tag>
-              <span style="font-weight:600;">{{ titleOf(n) }}</span>
-              <code style="color:#9ca3af;font-size:12px;">{{ n.slug || '#' + n.id }}</code>
-            </div>
-          </div>
-        </template>
-        <div v-else-if="!expandDialog.loading" style="color:#9ca3af;padding:20px;text-align:center;">
-          展开失败（字段可能不在该类型上）
-        </div>
-      </div>
-    </el-dialog>
-  </div>
-</template>
 
 <script>
 import FieldRenderer from './FieldRenderer.vue'
@@ -184,8 +132,7 @@ export default {
             parentField: 'parent',
             filterTree: { def: null, field: '', label: '', nodes: [], active: 0 },
             query: { type: '', status: null, q: '', page: 1, size: 20 },
-            dialog: { visible: false, isEdit: false, id: 0, def: null, saving: false, form: emptyForm() },
-            expandDialog: { visible: false, loading: false, node: null, fields: [] },
+            createVisible: false,
         }
     },
     async mounted() { await this.loadTypes() },
@@ -303,100 +250,13 @@ export default {
             } finally { this.loading = false }
         },
         onPageChange(p) { this.query.page = p; this.refresh() },
-        openCreate(parentId) {
-            this.dialog.isEdit = false
-            this.dialog.id = 0
-            this.dialog.def = this.typeDefs[this.query.type] || null
-            this.dialog.form = emptyForm()
-            if (parentId) this.dialog.form.fields.parent = parentId
-            this.dialog.visible = true
-        },
-        openCreateChild(row) {
-            this.openCreate(row.id)
-        },
-        // 引用展开预览: ExpandPath 全 ref 字段一层全景
-        async openExpand(r) {
-            this.expandDialog.visible = true
-            this.expandDialog.loading = true
-            this.expandDialog.node = null
-            try {
-                const res = await window.$api.get('/admin/expand', { node: r.id })
-                this.expandDialog.node = res.node || null
-                this.expandDialog.fields = this.expandDialog.node ? Object.keys(this.expandDialog.node.expand || {}) : []
-            } catch (_) { this.expandDialog.node = null }
-            this.expandDialog.loading = false
-        },
-        // 展开值形态: 单值（*Node）或数组（[]*Node）— 类型定义驱动
-        expandItems(v) { return Array.isArray(v) ? v : [v] },
-        async openEdit(r) {
-            const full = await window.$api.node(r.id)
-            this.dialog.isEdit = true
-            this.dialog.id = r.id
-            // 树节点可能缺 type（tree API 已带, 兜底当前类型）
-            this.dialog.def = this.typeDefs[r.type || this.query.type] || null
-            this.dialog.form = {
-                slug: full.slug || '',
-                status: full.status,
-                sort: full.sort || 0,
-                fields: full.fields || {},
-            }
-            // 引用回显: expand *（全部出边字段）→ refPreset（已选值显示标题, 非裸 id）
-            this.dialog.form.refPreset = {}
-            try {
-                const ex = await window.$api.get('/admin/expand', { node: r.id, expr: '*' })
-                const expand = (ex.node && ex.node.expand) || {}
-                console.log('[openEdit] expand 返回:', { node: r.id, expandKeys: Object.keys(expand),
-                    expandSample: Object.entries(expand).map(([k, v]) => ({ field: k,
-                        items: (Array.isArray(v) ? v : [v]).filter(Boolean).map(n => ({ id: n.id, title: n.title, type: n.type })) })) })
-                const preset = {}
-                Object.keys(expand).forEach(f => {
-                    const v = expand[f]
-                    const items = Array.isArray(v) ? v : (v ? [v] : [])
-                    preset[f] = items.map(n => ({ id: n.id, label: window.$api.refLabel(n, this.typeDefs[n.type] || null) + ' #' + n.id }))
-                })
-                console.log('[openEdit] preset:', preset)
-                this.dialog.form.refPreset = preset
-            } catch (e) { console.log('[openEdit] expand 失败:', e) }
-            this.dialog.visible = true
-        },
-        async save() {
-            this.dialog.saving = true
-            try {
-                const body = {
-                    slug: this.dialog.form.slug,
-                    status: this.dialog.form.status,
-                    sort: this.dialog.form.sort,
-                    fields: this.dialog.form.fields || {},
-                }
-                if (this.dialog.isEdit) {
-                    await window.$api.updateNode(this.dialog.id, body)
-                } else {
-                    await window.$api.createNode(this.query.type, body)
-                }
-                ElMessage.success('已保存')
-                this.dialog.visible = false
-                this.refresh()
-            } catch (_) { /* api.js 已提示 */ }
-            this.dialog.saving = false
-        },
-        async doDelete(r) {
-            await ElMessageBox.confirm('删除 #' + r.id + ' ?（关联引用一并清理）', '确认', { type: 'warning' })
-            await window.$api.deleteNode(r.id)
-            ElMessage.success('已删除')
-            this.refresh()
-        },
         fmt(s) { return s ? s.replace('T', ' ').slice(0, 16) : '' },
         // 列表标题: 统一走 $api.refLabel（title 列 → slug → 类型字段序兜底 → expand 合成）
         titleOf(r) {
             return window.$api.refLabel(r, this.typeDefs[r.type] || null)
         },
     },
-}
-
-function emptyForm() {
-    return { slug: '', status: 1, sort: 0, fields: {}, refPreset: {} }
-}
-</script>
+}</script>
 
 <style scoped>
 .nodes-page { display: flex; gap: 16px; flex: 1; min-height: 0; }

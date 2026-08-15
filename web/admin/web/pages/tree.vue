@@ -45,6 +45,11 @@
                         </template>
                     </el-table-column>
                     <el-table-column prop="slug" label="slug" min-width="120" />
+                    <el-table-column label="操作" width="170" fixed="right">
+                        <template #default="{ row }">
+                            <node-ops :node="row" :defs="defsByType" @changed="loadInbound" />
+                        </template>
+                    </el-table-column>
                 </el-table>
                 <div style="display:flex;justify-content:flex-end;margin-top:12px;">
                     <el-pagination background layout="prev, pager, next, total" :total="total"
@@ -57,6 +62,7 @@
 <script>
 import { useRoute } from 'vue-router'
 export default {
+    components: { NodeOps: () => import('./NodeOps.vue') },
     setup() {
         var route = useRoute()
         return { typeName: route.params.type }
@@ -64,6 +70,7 @@ export default {
     data() {
         return {
             def: null,
+            defsByType: {},
             treeNodes: [],
             activeId: 0,
             activeNode: null,
@@ -82,7 +89,8 @@ export default {
         },
         async loadTypes() {
             var res = await $api.types()
-            this.def = (res.types || {})[this.typeName] || null
+            this.defsByType = res.types || {}
+            this.def = this.defsByType[this.typeName] || null
             this.loadTree()
         },
         async loadTree() {
