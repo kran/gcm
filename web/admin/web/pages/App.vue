@@ -53,7 +53,7 @@
                 <el-tooltip v-for="item in menuData" :key="item.key" :content="item.label"
                     placement="right">
                     <div class="rail-item" :class="{ active: route.name === item.route }"
-                        @click="router.push({ name: item.route })">
+                        @click="router.push({ name: item.route, params: item.params })">
                         <el-icon :size="19"><component :is="item.icon" /></el-icon>
                     </div>
                 </el-tooltip>
@@ -128,13 +128,16 @@ export default {
                 var defs = res.types || {}
                 Object.keys(defs).forEach(function (t) {
                     if ((defs[t].view || '') !== 'tree') return
-                    var name = 'tree-' + t
-                    router.addRoute({ name: name, path: '/tree/' + t + '/:type?', component: Vue.defineAsyncComponent({
-                        loader: function () { return Panel.loadComponent('pages/tree.vue') },
-                        loadingComponent: { template: '<div style="padding:40px;text-align:center;color:#999;">加载中...</div>' },
-                        delay: 100,
-                    }) })
-                    menuData.value.push({ key: name, label: (defs[t].title || t) + '树', icon: 'Share', route: name })
+                    // 统一一个路由 /tree/:type — 菜单点击带 params
+                    if (!router.hasRoute('tree')) {
+                        router.addRoute({ name: 'tree', path: '/tree/:type', component: Vue.defineAsyncComponent({
+                            loader: function () { return Panel.loadComponent('pages/tree.vue') },
+                            loadingComponent: { template: '<div style="padding:40px;text-align:center;color:#999;">加载中...</div>' },
+                            delay: 100,
+                        }) })
+                    }
+                    menuData.value.push({ key: 'tree-' + t, label: (defs[t].title || t) + '树',
+                        icon: 'Share', route: 'tree', params: { type: t } })
                 })
             } catch (e) { console.error('[panel] loadTreeMenus failed:', e) }
         }

@@ -269,7 +269,7 @@ func TestAdminCRUD(t *testing.T) {
 func TestAdminSearch(t *testing.T) {
 	s, _ := newAdminSite(t)
 	authedReq(t, s, http.MethodPost, "/admin/nodes?type=person",
-		map[string]any{"fields": map[string]any{"name": "李志起"}})
+		map[string]any{"fields": map[string]any{"name": "李雷"}})
 	authedReq(t, s, http.MethodPost, "/admin/nodes?type=person",
 		map[string]any{"fields": map[string]any{"name": "张三"}})
 
@@ -277,7 +277,7 @@ func TestAdminSearch(t *testing.T) {
 	if res.Code != 200 {
 		t.Fatalf("search: %d", res.Code)
 	}
-	if !strings.Contains(res.Body.String(), "李志起") || strings.Contains(res.Body.String(), "张三") {
+	if !strings.Contains(res.Body.String(), "李雷") || strings.Contains(res.Body.String(), "张三") {
 		t.Fatalf("search result: %s", res.Body.String())
 	}
 }

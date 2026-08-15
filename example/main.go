@@ -230,7 +230,7 @@ func seed(svc *core.Service) error {
 	// 专家
 	li, err := svc.CreateNode(&core.Node{Type: "person", Slug: "li-zhiqi",
 		Status: core.StatusPublished,
-		Fields: core.Fields{"name": "李志起", "bio": "振兴国际智库理事长，长期跟踪研究高潜力企业群体。"}})
+		Fields: core.Fields{"name": "李雷", "bio": "XX智库理事长，长期跟踪研究高潜力企业群体。"}})
 	if err != nil {
 		return err
 	}
@@ -243,7 +243,7 @@ func seed(svc *core.Service) error {
 
 	// 机构 + 任职（关系节点）
 	viicn, err := svc.CreateNode(&core.Node{Type: "org",
-		Fields: core.Fields{"name": "振兴国际智库"}})
+		Fields: core.Fields{"name": "XX智库"}})
 	if err != nil {
 		return err
 	}
@@ -252,7 +252,7 @@ func seed(svc *core.Service) error {
 	if err != nil {
 		return err
 	}
-	// 任职: 李志起 → 智库理事长 / 大学客座
+	// 任职: 李雷 → 智库理事长 / 大学客座
 	if _, err := svc.CreateNode(&core.Node{Type: "employment",
 		Fields: core.Fields{"person": li, "org": viicn, "role": "理事长", "tenure": "2018-至今"}}); err != nil {
 		return err

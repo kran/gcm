@@ -62,7 +62,7 @@ func newTypes(t *testing.T, yaml string) *types.Types {
 
 func TestCreateGet(t *testing.T) {
 	s := newService(t)
-	id, err := s.CreateNode(&Node{Type: "person", Slug: "li-zhiqi", Fields: Fields{"name": "李志起"}})
+	id, err := s.CreateNode(&Node{Type: "person", Slug: "li-zhiqi", Fields: Fields{"name": "李雷"}})
 	if err != nil {
 		t.Fatalf("CreateNode: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestCreateGet(t *testing.T) {
 	if n.Type != "person" || n.Slug != "li-zhiqi" || n.Status != StatusDraft {
 		t.Fatalf("node: %+v", n)
 	}
-	if n.Fields["name"] != "李志起" {
+	if n.Fields["name"] != "李雷" {
 		t.Fatalf("fields: %v", n.Fields)
 	}
 }
@@ -341,7 +341,7 @@ types:
       - { name: person, kind: ref, to: person }
       - { name: role, kind: text }
 `))
-	li, err := s.CreateNode(&Node{Type: "person", Fields: Fields{"name": "李志起"}})
+	li, err := s.CreateNode(&Node{Type: "person", Fields: Fields{"name": "李雷"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -353,8 +353,8 @@ types:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Title != "李志起" {
-		t.Fatalf("title through: want 李志起, got %q", got.Title)
+	if got.Title != "李雷" {
+		t.Fatalf("title through: want 李雷, got %q", got.Title)
 	}
 	// 无引用 → 空（不崩）
 	emp2, err := s.CreateNode(&Node{Type: "employment", Fields: Fields{"role": "顾问"}})
