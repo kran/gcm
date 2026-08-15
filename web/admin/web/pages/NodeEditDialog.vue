@@ -35,7 +35,8 @@ export default {
         node: { type: Object, default: () => ({}) },   // 编辑: 行数据（含 id/type）
         defs: { type: Object, default: () => ({}) },
         typeName: { type: String, default: '' },       // 新建类型（编辑用 node.type）
-        parentId: { type: Number, default: 0 },        // 新建子的父 id
+        presetField: { type: String, default: '' },    // 新建预置字段（如 parent/categories）
+        presetValue: { type: Number, default: 0 },     // 预置字段值（如选中的树节点 id）
         isEdit: { type: Boolean, default: false },
     },
     emits: ['update:visible', 'changed'],
@@ -61,7 +62,7 @@ export default {
         loadCreate() {
             this.def = this.defs[this.typeName] || null
             this.form = { slug: '', status: 1, sort: 0, fields: {}, refPreset: {} }
-            if (this.parentId) this.form.fields.parent = this.parentId
+            if (this.presetField && this.presetValue) this.form.fields[this.presetField] = this.presetValue
         },
         loadEdit() {
             var r = this.node

@@ -5,7 +5,16 @@
             <div class="nodes-tree" style="width:220px;">
                 <div class="nodes-tree-header">
                     <span style="font-weight:600;font-size:14px;">{{ typeName }} tree</span>
-                    <el-button link type="primary" size="small" @click="loadTree">刷新</el-button>
+                    <span>
+                        <el-dropdown v-if="refTypes.length" split-button type="primary" size="small"
+                                     @click="onCreateType(refTypes[0])" @command="onCreateType">
+                            新建
+                            <el-dropdown-menu>
+                                <el-dropdown-item v-for="t in refTypes" :key="t" :command="t">{{ t }}</el-dropdown-item>
+                            </el-dropdown-menu>
+                        </el-dropdown>
+                        <el-button link type="primary" size="small" @click="loadTree">刷新</el-button>
+                    </span>
                 </div>
                 <div style="max-height:70vh;overflow:auto;margin-top:8px;">
                     <el-tree :data="treeNodes" node-key="id" default-expand-all
@@ -58,11 +67,19 @@
             </div>
         </div>
     </div>
+
+    <!-- 新建（类型 = 引用本树的类型） -->
+    <node-edit-dialog v-model:visible="createVisible" :type-name="createType" :defs="defsByType"
+                      :preset-field="createField" :preset-value="activeId"
+                      @changed="loadInbound" />
 </template>
 <script>
 import { useRoute } from 'vue-router'
 export default {
-    components: { NodeOps: Vue.defineAsyncComponent(() => window.Panel.loadComponent('pages/NodeOps.vue')) },
+    components: {
+        NodeOps: Vue.defineAsyncComponent(() => window.Panel.loadComponent('pages/NodeOps.vue')),
+        NodeEditDialog: Vue.defineAsyncComponent(() => window.Panel.loadComponent('pages/NodeEditDialog.vue')),
+    },
     setup() {
         var route = useRoute()
         return { typeName: route.params.type }
@@ -80,6 +97,10 @@ export default {
             page: 1,
             size: 20,
             loading: false,
+            refTypes: [],          // 引用该 tree 类型的类型（新建选项）
+            createType: '',        // 当前新建的类型
+            createField: '',       // 新建预置字段（指向本树的 ref 字段）
+            createVisible: false,
         }
     },
     mounted() { this.loadTypes() },
@@ -91,6 +112,16 @@ export default {
             var res = await $api.types()
             this.defsByType = res.types || {}
             this.def = this.defsByType[this.typeName] || null
+            // 引用该 tree 类型的类型（含自己 — 新建子分类）: ref/ref[] 字段 to === typeName
+            var me = this
+            this.refTypes = []
+            Object.keys(this.defsByType).forEach(function (t) {
+                var def = me.defsByType[t]
+                var hits = (def.fields || []).filter(function (f) {
+                    return (f.kind === 'ref' || f.kind === 'ref[]') && f.to === me.typeName
+                })
+                if (hits.length) me.refTypes.push(t)
+            })
             this.loadTree()
         },
         async loadTree() {
@@ -117,6 +148,17 @@ export default {
             var walk = (node) => { (node.children || []).forEach(function (c) { ids.push(c.id); walk(c) }) }
             walk(n)
             return ids
+        },
+        onCreateType(t) {
+            this.createType = t
+            // 预置字段: 该类型指向本 tree 类型的第一个 ref 字段
+            var def = this.defsByType[t] || {}
+            var me = this
+            var f = (def.fields || []).find(function (x) {
+                return (x.kind === 'ref' || x.kind === 'ref[]') && x.to === me.typeName
+            })
+            this.createField = f ? f.name : ''
+            this.createVisible = true
         },
         onNodeClick(n) {
             this.activeId = n.id
