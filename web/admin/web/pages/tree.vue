@@ -7,7 +7,7 @@
                     <span style="font-weight:600;font-size:14px;">{{ typeName }} tree</span>
                     <el-button link type="primary" size="small" @click="loadTree">刷新</el-button>
                 </div>
-                <div style="max-height:70vh;overflow:auto;">
+                <div style="max-height:70vh;overflow:auto;margin-top:8px;">
                     <el-tree :data="treeNodes" node-key="id" default-expand-all
                              :expand-on-click-node="false" highlight-current
                              :current-node-key="activeId" @node-click="onNodeClick">
