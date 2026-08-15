@@ -5,8 +5,8 @@
         <el-button link size="small" @click="openExpand">引用</el-button>
         <el-button link type="danger" size="small" @click="doDelete">删除</el-button>
     </div>
-    <node-edit-dialog :visible="editVisible" :node="node" :type-name="typeName" :parent-id="parentId"
-                      :is-edit="isEdit" :defs="defs" @close="editVisible = false" @changed="$emit('changed')" />
+    <node-edit-dialog v-model:visible="editVisible" :node="node" :type-name="typeName" :parent-id="parentId"
+                      :is-edit="isEdit" :defs="defs" @changed="$emit('changed')" />
 
     <!-- 引用展开预览 -->
     <el-dialog v-model="expandDialog.visible" title="引用展开" width="60vw">

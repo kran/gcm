@@ -1,5 +1,5 @@
 <template>
-    <el-dialog v-model="visible" :title="isEdit ? '编辑 #' + node.id : '新建 ' + (typeName || '')"
+    <el-dialog v-model="visibleModel" :title="isEdit ? '编辑 #' + node.id : '新建 ' + (typeName || '')"
                width="80vw">
         <el-form>
             <el-form-item label="slug">
@@ -19,13 +19,14 @@
                             :ref-preset="form.refPreset || {}" :defs="defs" />
         </el-form>
         <template #footer>
-            <el-button @click="close">取消</el-button>
+            <el-button @click="visibleModel = false">取消</el-button>
             <el-button type="primary" :loading="saving" @click="save">保存</el-button>
         </template>
     </el-dialog>
 </template>
 <script>
-// NodeEditDialog: 节点新建/编辑共用表单（nodes.vue 页面级新建 / NodeOps 行编辑共用）。
+// NodeEditDialog: 节点新建/编辑共用表单。
+// v-model:visible 控制显隐; @changed 保存成功后通知。
 export default {
     name: 'NodeEditDialog',
     components: { FieldRenderer: window.Panel.loadComponent('pages/FieldRenderer.vue') },
@@ -37,9 +38,16 @@ export default {
         parentId: { type: Number, default: 0 },        // 新建子的父 id
         isEdit: { type: Boolean, default: false },
     },
-    emits: ['close', 'changed'],
+    emits: ['update:visible', 'changed'],
     data() {
         return { form: { slug: '', status: 1, sort: 0, fields: {}, refPreset: {} }, saving: false, def: null }
+    },
+    computed: {
+        // v-model:visible 代理 — prop 只读, 内部写走 emit
+        visibleModel: {
+            get() { return this.visible },
+            set(v) { this.$emit('update:visible', v) },
+        },
     },
     watch: {
         visible(v) {
@@ -95,10 +103,9 @@ export default {
             p.then(() => {
                 ElMessage.success('已保存')
                 this.$emit('changed')
-                this.close()
+                this.visibleModel = false
             }).catch(() => {}).finally(() => { this.saving = false })
         },
-        close() { this.$emit('close') },
     },
 }
 </script>
