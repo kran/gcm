@@ -71,7 +71,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="230" fixed="right">
+        <el-table-column label="操作" width="300" fixed="right">
           <template #default="{ row: r }">
             <node-ops :node="r" :defs="typeDefs" :type-name="query.type" show-create
                       :parent-id="r.id" @changed="refresh" />
@@ -98,34 +98,35 @@
         <el-table-column label="更新时间" width="165">
           <template #default="{ row: r }">{{ fmt(r.updated_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="170" fixed="right">
+        <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row: r }">
             <node-ops :node="r" :defs="typeDefs" :type-name="query.type" @changed="refresh" />
           </template>
         </el-table-column>
       </el-table>
 
-      <!-- 页面级新建（行编辑走 NodeOps） -->
-      <node-edit-dialog :visible="createVisible" :type-name="query.type" :defs="typeDefs"
-                        @close="createVisible = false" @changed="refresh" />
-
       <div v-if="!treeMode" style="display:flex;justify-content:flex-end;margin-top:12px;">
         <el-pagination background layout="total, prev, pager, next" :total="total"
                        :page-size="query.size" :current-page="query.page"
                        @current-change="onPageChange" />
       </div>
+      <!-- 页面级新建（行编辑走 NodeOps） -->
+      <node-edit-dialog v-model:visible="createVisible" :type-name="query.type" :defs="typeDefs"
+                        @changed="refresh" />
     </div>
 
+
+
+
+  </div>
+</template>
+
 <script>
-console.log('[nodes] script executed')
+import FieldRenderer from './FieldRenderer.vue'
 export default {
     name: 'NodesPage',
-    errorCaptured(err, info) {
-        console.error('[nodes] errorCaptured:', err, info)
-        return false
-    },
     components: {
-        FieldRenderer: Vue.defineAsyncComponent(() => window.Panel.loadComponent('pages/FieldRenderer.vue')),
+        FieldRenderer,
         NodeOps: Vue.defineAsyncComponent(() => window.Panel.loadComponent('pages/NodeOps.vue')),
         NodeEditDialog: Vue.defineAsyncComponent(() => window.Panel.loadComponent('pages/NodeEditDialog.vue')),
     },
@@ -144,13 +145,7 @@ export default {
             createVisible: false,
         }
     },
-    async mounted() {
-        console.log('[nodes] mounted')
-        try {
-            await this.loadTypes()
-            console.log('[nodes] types loaded:', this.typeNames.length)
-        } catch (e) { console.error('[nodes] loadTypes failed:', e) }
-    },
+    async mounted() { await this.loadTypes() },
     methods: {
         // 图标来自类型配置（icon 字段）; 空 = 默认
         typeIcon(t) {

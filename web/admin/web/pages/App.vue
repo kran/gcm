@@ -130,7 +130,7 @@ export default {
                 var defs = res.types || {}
                 Object.keys(defs).forEach(function (t) {
                     if ((defs[t].view || '') !== 'tree') return
-                    menuData.value.push({ key: 'tree-' + t, label: (defs[t].title || t) + '树',
+                    menuData.value.push({ key: 'tree-' + t, label: t + '树',
                         icon: 'Share', route: 'tree', params: { type: t } })
                 })
             } catch (e) { console.error('[panel] loadTreeMenus failed:', e) }
