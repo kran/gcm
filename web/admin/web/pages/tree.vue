@@ -5,16 +5,7 @@
             <div class="nodes-tree" style="width:220px;">
                 <div class="nodes-tree-header">
                     <span style="font-weight:600;font-size:14px;">{{ typeName }} tree</span>
-                    <span>
-                        <el-dropdown v-if="refTypes.length" split-button type="primary" size="small"
-                                     @click="onCreateType(refTypes[0])" @command="onCreateType">
-                            新建
-                            <el-dropdown-menu>
-                                <el-dropdown-item v-for="t in refTypes" :key="t" :command="t">{{ t }}</el-dropdown-item>
-                            </el-dropdown-menu>
-                        </el-dropdown>
-                        <el-button link type="primary" size="small" @click="loadTree">刷新</el-button>
-                    </span>
+                    <el-button link type="primary" size="small" @click="loadTree">刷新</el-button>
                 </div>
                 <div style="max-height:70vh;overflow:auto;margin-top:8px;">
                     <el-tree :data="treeNodes" node-key="id" default-expand-all
@@ -37,6 +28,15 @@
                         含子树
                     </el-checkbox>
                     <span v-if="total" style="color:#9ca3af;font-size:12px;">共 {{ total }} 条</span>
+                    <span style="margin-left:auto;">
+                        <el-dropdown v-if="refTypes.length" split-button type="primary" size="small"
+                                     @click="onCreateType(refTypes[0])" @command="onCreateType">
+                            {{ '新建 ' + refTypes[0] }}
+                            <el-dropdown-menu>
+                                <el-dropdown-item v-for="t in refTypes" :key="t" :command="t">{{ t }}</el-dropdown-item>
+                            </el-dropdown-menu>
+                        </el-dropdown>
+                    </span>
                 </div>
                 <el-table :data="rows" v-loading="loading" border stripe size="small" max-height="65vh">
                     <el-table-column prop="id" label="ID" width="70" />
