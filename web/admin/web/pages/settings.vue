@@ -31,7 +31,7 @@
       </el-table-column>
     </el-table>
 
-    <el-dialog v-model="dialog.visible" :title="dialog.isNew ? '新建配置' : '编辑 ' + dialog.key" width="60vw">
+    <el-dialog append-to-body v-model="dialog.visible" :title="dialog.isNew ? '新建配置' : '编辑 ' + dialog.key" width="60vw">
       <el-form label-width="60px">
         <el-form-item label="key">
           <el-input v-model="dialog.key" :disabled="!dialog.isNew" placeholder="footer / seo.default" />

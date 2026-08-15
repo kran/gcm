@@ -1,5 +1,5 @@
 <template>
-    <el-dialog v-model="visibleModel" :title="isEdit ? '编辑 #' + node.id : '新建 ' + (typeName || '')"
+    <el-dialog append-to-body v-model="visibleModel" :title="isEdit ? '编辑 #' + node.id : '新建 ' + (typeName || '')"
                width="80vw">
         <el-form>
             <el-form-item label="slug">

@@ -9,7 +9,7 @@
                       :is-edit="isEdit" :defs="defs" @changed="$emit('changed')" />
 
     <!-- 引用展开预览 -->
-    <el-dialog v-model="expandDialog.visible" title="引用展开" width="60vw">
+    <el-dialog append-to-body v-model="expandDialog.visible" title="引用展开" width="60vw">
         <div v-loading="expandDialog.loading" style="min-height:120px;">
             <template v-if="expandDialog.node">
                 <div v-if="!expandDialog.fields.length" style="color:#9ca3af;padding:20px;text-align:center;">
