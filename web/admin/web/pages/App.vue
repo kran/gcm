@@ -53,7 +53,16 @@
             <aside class="panel-sidebar expanded">
                 <div class="panel-menu-scroll">
                     <div class="panel-menu expanded">
-                        <div v-for="item in menuData" :key="item.key" class="menu-item"
+                        <!-- 固定菜单（内置: 内容管理/配置/账号） -->
+                        <div v-for="item in mainMenu" :key="item.key" class="menu-item"
+                            :class="{ active: route.name === item.route }"
+                            @click="router.push({ name: item.route, params: item.params })">
+                            <span class="menu-icon"><el-icon :size="18"><component :is="item.icon" /></el-icon></span>
+                            <span>{{ item.label }}</span>
+                        </div>
+                        <!-- 动态菜单（tree 类型/面板）— 分隔线 -->
+                        <div v-if="extraMenu.length" class="menu-divider" />
+                        <div v-for="item in extraMenu" :key="item.key" class="menu-item"
                             :class="{ active: route.name === item.route }"
                             @click="router.push({ name: item.route, params: item.params })">
                             <span class="menu-icon"><el-icon :size="18"><component :is="item.icon" /></el-icon></span>
@@ -85,6 +94,9 @@ export default {
         var Panel = window.Panel
         var menuData = ref(window.AppConfig.menu) // ref: 插件面板动态 push 后 UI 刷新
         var defaultPage = window.AppConfig.defaultPage
+        // 固定菜单（内置）与动态菜单（tree/面板）— 动态项由 section 标记
+        var mainMenu = computed(function () { return menuData.value.filter(function (m) { return !m.section }) })
+        var extraMenu = computed(function () { return menuData.value.filter(function (m) { return m.section }) })
 
         var phase = ref('loading')
         var user = ref(null)
@@ -134,7 +146,7 @@ export default {
                 var defs = res.types || {}
                 Object.keys(defs).forEach(function (t) {
                     if ((defs[t].view || '') !== 'tree') return
-                    menuData.value.push({ key: 'tree-' + t, label: t + ' tree',
+                    menuData.value.push({ key: 'tree-' + t, label: t + ' tree', section: 'tree',
                         icon: 'Share', route: 'tree', params: { type: t } })
                 })
             } catch (e) { console.error('[panel] loadTreeMenus failed:', e) }
@@ -152,7 +164,7 @@ export default {
                         loadingComponent: { template: '<div style="padding:40px;text-align:center;color:#999;">加载中...</div>' },
                         delay: 100,
                     }) })
-                    menuData.value.push({ key: name, label: p.title, icon: 'Grid', route: name })
+                    menuData.value.push({ key: name, label: p.title, icon: 'Grid', route: name, section: 'panel' })
                 })
                 // 刷新后 hash 残留动态路由页: 初次渲染时未注册导致失配 — 重新匹配
                 if (route.name === undefined && route.path !== '/') {
@@ -187,7 +199,7 @@ export default {
 
         return {
             phase: phase, user: user, siteName: siteName, pageTitle: pageTitle,
-            menuData: menuData, loginForm: loginForm,
+            menuData: menuData, mainMenu: mainMenu, extraMenu: extraMenu, loginForm: loginForm,
             route: route, router: router,
             doLogin: doLogin, doLogout: doLogout,
         }
