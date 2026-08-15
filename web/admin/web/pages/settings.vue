@@ -104,10 +104,10 @@
   </div>
 </template>
 <script>
-import RichEditor from './RichEditor.vue'
+
 export default {
     name: 'SettingsPage',
-    components: { RichEditor },
+    components: { RichEditor: Vue.defineAsyncComponent(() => window.Panel.loadComponent('pages/RichEditor.vue')) },
     data() {
         return {
             rows: [], groups: [], group: '', loading: false,

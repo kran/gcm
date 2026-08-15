@@ -117,7 +117,6 @@
     </div>
 
 <script>
-import FieldRenderer from './FieldRenderer.vue'
 export default {
     name: 'NodesPage',
     errorCaptured(err, info) {
@@ -125,7 +124,7 @@ export default {
         return false
     },
     components: {
-        FieldRenderer,
+        FieldRenderer: Vue.defineAsyncComponent(() => window.Panel.loadComponent('pages/FieldRenderer.vue')),
         NodeOps: Vue.defineAsyncComponent(() => window.Panel.loadComponent('pages/NodeOps.vue')),
         NodeEditDialog: Vue.defineAsyncComponent(() => window.Panel.loadComponent('pages/NodeEditDialog.vue')),
     },

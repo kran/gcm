@@ -102,13 +102,13 @@
     </div>
 </template>
 <script>
-import RichEditor from './RichEditor.vue'
+
 
 // FieldRenderer 按 types 定义递归渲染字段表单 (design §9 复合字段)。
 // 自引用经 name: 'FieldRenderer' 实现 (SFC 运行时编译无法自 import)。
 export default {
     name: 'FieldRenderer',
-    components: { RichEditor },
+    components: { RichEditor: Vue.defineAsyncComponent(() => window.Panel.loadComponent('pages/RichEditor.vue')) },
     props: {
         fields: { type: Array, default: () => [] },
         modelValue: { type: Object, default: () => ({}) },
