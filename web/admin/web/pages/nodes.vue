@@ -101,12 +101,13 @@
         <el-table-column label="操作" width="170" fixed="right">
           <template #default="{ row: r }">
             <node-ops :node="r" :defs="typeDefs" :type-name="query.type" @changed="refresh" />
-              <!-- 页面级新建（行编辑走 NodeOps） -->
-    <node-edit-dialog :visible="createVisible" :type-name="query.type" :defs="typeDefs"
-                      @close="createVisible = false" @changed="refresh" />
-</template>
+          </template>
         </el-table-column>
       </el-table>
+
+      <!-- 页面级新建（行编辑走 NodeOps） -->
+      <node-edit-dialog :visible="createVisible" :type-name="query.type" :defs="typeDefs"
+                        @close="createVisible = false" @changed="refresh" />
 
       <div v-if="!treeMode" style="display:flex;justify-content:flex-end;margin-top:12px;">
         <el-pagination background layout="total, prev, pager, next" :total="total"
@@ -119,7 +120,11 @@
 import FieldRenderer from './FieldRenderer.vue'
 export default {
     name: 'NodesPage',
-    components: { FieldRenderer },
+    components: {
+        FieldRenderer,
+        NodeOps: window.Panel.loadComponent('pages/NodeOps.vue'),
+        NodeEditDialog: window.Panel.loadComponent('pages/NodeEditDialog.vue'),
+    },
     data() {
         return {
             typeNames: [],

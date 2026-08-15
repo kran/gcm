@@ -35,7 +35,7 @@
 // NodeOps: 通用节点操作（编辑/删除/引用展开）— nodes.vue / tree.vue 共用。
 export default {
     name: 'NodeOps',
-    components: { NodeEditDialog: () => import('./NodeEditDialog.vue') },
+    components: { NodeEditDialog: window.Panel.loadComponent('pages/NodeEditDialog.vue') },
     props: {
         node: { type: Object, required: true },      // 行数据（含 id/type）
         defs: { type: Object, default: () => ({}) }, // 类型定义表（titleOf/refLabel 用）

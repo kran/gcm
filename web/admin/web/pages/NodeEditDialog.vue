@@ -28,7 +28,7 @@
 // NodeEditDialog: 节点新建/编辑共用表单（nodes.vue 页面级新建 / NodeOps 行编辑共用）。
 export default {
     name: 'NodeEditDialog',
-    components: { FieldRenderer: () => import('./FieldRenderer.vue') },
+    components: { FieldRenderer: window.Panel.loadComponent('pages/FieldRenderer.vue') },
     props: {
         visible: { type: Boolean, required: true },
         node: { type: Object, default: () => ({}) },   // 编辑: 行数据（含 id/type）
