@@ -30,7 +30,6 @@ types:
 	tplA := filepath.Join(dir, "tplA")
 	tplB := filepath.Join(dir, "tplB")
 	appA, err := NewSite(SiteSpec{
-		Hosts:     []string{"a.com"},
 		DBPath:    filepath.Join(dir, "a.db"),
 		Types:     typesA,
 		Templates: tplA,
@@ -43,7 +42,6 @@ types:
 		t.Fatal(err)
 	}
 	appB, err := NewSite(SiteSpec{
-		Hosts:     []string{"b.com"},
 		DBPath:    filepath.Join(dir, "b.db"),
 		Types:     typesB,
 		Templates: tplB,

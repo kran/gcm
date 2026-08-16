@@ -289,7 +289,7 @@ func (b *backend) listNodes(ctx *web.CmsCtx) {
 	if filter != "" {
 		f = `(and (= type {:typ}) ` + filter + `)`
 	}
-	list, total, err = b.core.Q(core.ListQuery{Filter: f, Page: page, Size: size}, params)
+	list, total, err = b.core.QueryPage(core.ListQuery{Filter: f, Page: page, Size: size}, params)
 	if err != nil {
 		// filter 编译错误（filter-lisp: 前缀）= 客户端参数 → 400; 其余 → 500
 		if strings.Contains(err.Error(), "filter-lisp:") {
@@ -464,7 +464,7 @@ func (b *backend) tree(ctx *web.CmsCtx) {
 		ctx.Error(http.StatusBadRequest, "type required")
 		return
 	}
-	list, _, err := b.core.Q(core.ListQuery{Filter: `(= type {:t})`, Page: 1, Size: 10000},
+	list, err := b.core.Query(core.ListQuery{Filter: `(= type {:t})`, Size: 10000},
 		map[string]any{"t": typ})
 	if err != nil {
 		b.internal(ctx, err)
@@ -647,7 +647,7 @@ func (b *backend) search(ctx *web.CmsCtx) {
 		}
 		params["q"] = "%" + q + "%"
 	}
-	list, total, err := b.core.Q(core.ListQuery{Filter: f, Page: page, Size: size}, params)
+	list, total, err := b.core.QueryPage(core.ListQuery{Filter: f, Page: page, Size: size}, params)
 	if err != nil {
 		b.internal(ctx, err)
 		return

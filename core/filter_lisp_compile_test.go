@@ -57,7 +57,7 @@ func TestLispListQ(t *testing.T) {
 	s.CreateNode(&Node{Type: "article", Status: StatusPublished, Sort: 2, Fields: Fields{"title": "乙", "categories": []any{root}}})
 
 	// Filter（Lisp）+ 分页
-	list, total, err := s.Q(ListQuery{Filter: `(and (= type "article") (in ->categories (subtree "root")))`, Page: 1, Size: 10})
+	list, total, err := s.QueryPage(ListQuery{Filter: `(and (= type "article") (in ->categories (subtree "root")))`, Page: 1, Size: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestLispListQ(t *testing.T) {
 		t.Fatalf("Q: total=%d len=%d", total, len(list))
 	}
 	// Sort + 分页
-	list, _, err = s.Q(ListQuery{Filter: `(and (= type "article") (= status 1))`, Sort: "sort DESC", Page: 1, Size: 1})
+	list, _, err = s.QueryPage(ListQuery{Filter: `(and (= type "article") (= status 1))`, Sort: "sort DESC", Page: 1, Size: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestLispListQ(t *testing.T) {
 		t.Fatalf("sort: %v", list)
 	}
 	// 空 filter
-	list, total, err = s.Q(ListQuery{Page: 1, Size: 10})
+	list, total, err = s.QueryPage(ListQuery{Page: 1, Size: 10})
 	if err != nil || total == 0 {
 		t.Fatalf("no filter: %v", err)
 	}

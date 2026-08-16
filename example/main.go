@@ -59,7 +59,6 @@ func main() {
 	}
 	// PocketBase 形态: 一个 App 装配全部（db/迁移/类型/引擎/admin/账号引导）
 	site, err := gcm.NewSite(gcm.SiteSpec{
-		Hosts:     []string{"localhost", "127.0.0.1"},
 		DBPath:    "example.db",
 		Types:     yaml,
 		Templates: "templates",
@@ -135,8 +134,8 @@ func setup(site *web.Site, svc *core.Service) error {
 		for i, id := range ids {
 			anyIDs[i] = id
 		}
-		list, _, err := svc.Q(core.ListQuery{
-			Filter: `(and (= type "article") (in ->categories {:ids}))`, Page: 1, Size: 50},
+		list, err := svc.Query(core.ListQuery{
+			Filter: `(and (= type "article") (in ->categories {:ids}))`, Size: 50},
 			map[string]any{"ids": anyIDs})
 		if err != nil {
 			return nil
@@ -146,8 +145,8 @@ func setup(site *web.Site, svc *core.Service) error {
 
 	// 站点自定义路由（Go 层查数据, 模板纯展示）
 	site.Get("/", func(ctx *web.CmsCtx) {
-		latest, _, err := svc.Q(core.ListQuery{
-			Filter: `(and (= type "article") (= status 1))`, Page: 1, Size: 5})
+		latest, err := svc.Query(core.ListQuery{
+			Filter: `(and (= type "article") (= status 1))`, Size: 5})
 		if err != nil {
 			ctx.String(http.StatusInternalServerError, err.Error())
 			return
@@ -285,9 +284,8 @@ func seed(svc *core.Service) error {
 // catList 顶级分类（首页导航）。
 func catList(svc *core.Service) ([]core.Node, error) {
 	// 顶级分类 = 无 parent 出边的 category（ListAny 返回 (list, total, err)）
-	list, _, err := svc.Q(core.ListQuery{
-		Filter: `(and (= type "category") (= status 1))`, Page: 1, Size: 50})
-	return list, err
+	return svc.Query(core.ListQuery{
+		Filter: `(and (= type "category") (= status 1))`, Size: 50})
 }
 
 // subtreeIDs 分类子树（含自身）。

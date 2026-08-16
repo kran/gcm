@@ -111,7 +111,7 @@ func (e *Engine) queryFuncs() template.FuncMap {
 				f = `(and (= type {:typ}) (= status {:st}))`
 				params["st"] = status
 			}
-			list, _, err := svc.Q(core.ListQuery{Filter: f, Page: page, Size: size}, params)
+			list, err := svc.Query(core.ListQuery{Filter: f, Page: page, Size: size}, params)
 			fail(err)
 			return list
 		},
@@ -171,7 +171,7 @@ func (e *Engine) queryFuncs() template.FuncMap {
 				params["typ"] = typ
 				f = `(and (= type {:typ}) ` + expr + `)`
 			}
-			list, _, err := e.core.Q(core.ListQuery{Filter: f, Page: page, Size: size}, params)
+			list, err := e.core.Query(core.ListQuery{Filter: f, Page: page, Size: size}, params)
 			fail(err)
 			return list
 		},

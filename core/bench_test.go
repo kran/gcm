@@ -158,7 +158,7 @@ func BenchmarkGet(b *testing.B) {
 func BenchmarkList(b *testing.B) {
 	svc := benchSvc(b)
 	for i := 0; i < b.N; i++ {
-		if _, _, err := svc.Q(ListQuery{Filter: `(and (= type "article") (= status 1))`, Page: 1, Size: 20}); err != nil {
+		if _, _, err := svc.QueryPage(ListQuery{Filter: `(and (= type "article") (= status 1))`, Page: 1, Size: 20}); err != nil {
 			b.Fatal(err)
 		}
 	}

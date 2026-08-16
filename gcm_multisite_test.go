@@ -27,7 +27,6 @@ func TestMultiSite(t *testing.T) {
 	}
 
 	appA, err := NewSite(SiteSpec{
-		Hosts:     []string{"site-a.com"},
 		DBPath:    filepath.Join(dir, "a.db"),
 		Types:     typesA,
 		Templates: mkTpl("a", `<h1>A:{{ .Node.Slug }}</h1>`),
@@ -40,7 +39,6 @@ func TestMultiSite(t *testing.T) {
 		t.Fatal(err)
 	}
 	appB, err := NewSite(SiteSpec{
-		Hosts:     []string{"site-b.com"},
 		DBPath:    filepath.Join(dir, "b.db"),
 		Types:     typesB,
 		Templates: mkTpl("b", `<h1>B:{{ .Node.Slug }}</h1>`),

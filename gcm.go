@@ -34,9 +34,8 @@ import (
 // 页面上下文由站点 Setup 里 AddHook(web.HookRender, ...) 注入（泛型消失 —
 // hook 的 data["Page"] 是 any, 站点定形状）。
 type SiteSpec struct {
-	Hosts  []string // 域名列表（Host 头分发键; 多站时必须非空, 单站可空）
-	DBPath string   // SQLite 库文件路径
-	Types  []byte   // types.yaml 内容（类型定义, 站点差异所在）
+	DBPath string // SQLite 库文件路径
+	Types  []byte // types.yaml 内容（类型定义, 站点差异所在）
 	// AdminPass 管理后台固定密码（空 = 首次生成随机密码并打印）。
 	AdminPass string
 	// Debug 开发模式: 渲染失败显示错误页（模板名/行号/原因/候选/数据 keys）;
@@ -140,12 +139,12 @@ func (a *builder) openDB(spec SiteSpec) (*dba.SQL, error) {
 	if dc, err := admin.EnsureDefaults(db); err != nil {
 		return nil, fmt.Errorf("admin bootstrap: %w", err)
 	} else if dc != nil {
-		log.Printf("gcm: site (%v): admin created: %s / %s", spec.Hosts, dc.Username, dc.Password)
+		log.Printf("gcm: %s: admin created: %s / %s", spec.DBPath, dc.Username, dc.Password)
 		if spec.AdminPass != "" {
 			if err := admin.NewService(db).SetPassword(spec.AdminPass); err != nil {
 				return nil, fmt.Errorf("set admin password: %w", err)
 			}
-			log.Printf("gcm: site (%v): admin password set to fixed", spec.Hosts)
+			log.Printf("gcm: %s: admin password set to fixed", spec.DBPath)
 		}
 	}
 	return db, nil

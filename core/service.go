@@ -476,22 +476,62 @@ type ListQuery struct {
 	Size   int
 }
 
-// Q 结构化查询执行（占位符参数可选 — {:name} 绑定）:
+// QueryPage 分页查询（占位符参数可选 — {:name} 绑定）:
 // base SQL 模板 + ${where}/${order} var 槽; 参数经变参传入, 无则 nil。
-func (s *Service) Q(q ListQuery, params ...map[string]any) ([]Node, int64, error) {
+// dba.Page 协议: ${F:*}（列槽, count 时换 COUNT(1)）+ ${order:}（排序槽,
+// count 自动清空）— count/data 同 base 不可变分叉, filter 只编译一次。
+// 类型过滤由使用方构建（(= type "x") 或 (in type ...)）— ListQuery 不预设。
+func (s *Service) QueryPage(q ListQuery, params ...map[string]any) ([]Node, int64, error) {
+	db, err := s.buildQuery(q, params)
+	if err != nil {
+		return nil, 0, err
+	}
+	rows, total, err := dba.Page[Node](db, q.Page, q.Size)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := s.expandRows(q, rows); err != nil {
+		return nil, 0, err
+	}
+	return rows, total, nil
+}
+
+// Query 只查不数（Size 即 LIMIT, 无 COUNT）— 首页区块/小列表用,
+// 不付全表 COUNT 的代价。排序/Expand 语义与 QueryPage 相同。
+func (s *Service) Query(q ListQuery, params ...map[string]any) ([]Node, error) {
+	db, err := s.buildQuery(q, params)
+	if err != nil {
+		return nil, err
+	}
+	if q.Size > 0 {
+		if q.Page > 1 {
+			db = db.Add("LIMIT #{1} OFFSET #{2}", q.Size, (q.Page-1)*q.Size)
+		} else {
+			db = db.Add("LIMIT #{1}", q.Size)
+		}
+	}
+	var rows []Node
+	if err := db.List(&rows); err != nil {
+		return nil, err
+	}
+	if err := s.expandRows(q, rows); err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// buildQuery 构建带 where/order 槽的查询对象（QueryPage/Query 共用）。
+func (s *Service) buildQuery(q ListQuery, params []map[string]any) (*dba.SQL, error) {
 	var p map[string]any
 	if len(params) > 0 {
 		p = params[0]
 	}
-	// dba.Page 协议: ${F:*}（列槽, count 时换 COUNT(1)）+ ${order:}（排序槽,
-	// count 自动清空）— count/data 同 base 不可变分叉, filter 只编译一次。
-	// 类型过滤由使用方构建（(= type "x") 或 (in type ...)）— ListQuery 不预设。
 	db := s.db.Add(`SELECT ${F:*} FROM nodes WHERE ${where} ${order:ORDER BY sort, id DESC}`)
 	if q.Filter != "" {
 		var err error
 		db, err = s.CompileLispInto(db, q.Filter, p)
 		if err != nil {
-			return nil, 0, err
+			return nil, err
 		}
 	} else {
 		db = db.Var("where", "1 = 1")
@@ -499,23 +539,24 @@ func (s *Service) Q(q ListQuery, params ...map[string]any) ([]Node, int64, error
 	if q.Sort != "" {
 		db = db.Var("order", "ORDER BY "+q.Sort)
 	}
-	rows, total, err := dba.Page[Node](db, q.Page, q.Size)
+	return db, nil
+}
+
+// expandRows 批量路径展开（查询次数 = 路径长度, 与列表大小无关）。
+func (s *Service) expandRows(q ListQuery, rows []Node) error {
+	if q.Expand == "" {
+		return nil
+	}
+	ids := make([]int64, len(rows))
+	for i := range rows {
+		ids[i] = rows[i].ID
+	}
+	expanded, err := s.ExpandPathMany(ids, q.Expand)
 	if err != nil {
-		return nil, 0, err
+		return err
 	}
-	// Expand 接线: 批量路径展开（查询次数 = 路径长度, 与列表大小无关）
-	if q.Expand != "" {
-		ids := make([]int64, len(rows))
-		for i := range rows {
-			ids[i] = rows[i].ID
-		}
-		expanded, err := s.ExpandPathMany(ids, q.Expand)
-		if err != nil {
-			return nil, 0, err
-		}
-		for i := range rows {
-			rows[i].Expand = expanded[i].Expand
-		}
+	for i := range rows {
+		rows[i].Expand = expanded[i].Expand
 	}
-	return rows, total, nil
+	return nil
 }
