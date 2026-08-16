@@ -200,6 +200,12 @@ func (f *ftsIndex) Rebuild() error {
 	})
 }
 
+// RebuildSearch 全量重建搜索索引（seed/批量导入后调用 — 索引是写路径同步的,
+// 直接 INSERT 的数据不会进索引）。
+func (s *Service) RebuildSearch() error {
+	return s.search.Rebuild()
+}
+
 // searchableType 类型是否声明可搜索（search: true）。
 func (s *Service) searchableType(typeName string) bool {
 	td, ok := s.types.Type(typeName)

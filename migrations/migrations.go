@@ -62,19 +62,22 @@ func NewRunner(db *dba.SQL) *Runner {
 
 // Up 执行 fsys 里的全部待应用迁移。tableName 是版本表名（站点/插件迁移
 // 用独立表名与 gcm 内嵌错开 — 建议 "site_goose_db_version"）。
-func (r *Runner) Up(fsys fs.FS, tableName string) error {
+// Up 执行 fsys 里的全部待应用迁移。返回本次应用的数量（0 = 已是最新 —
+// 调用方可用它判断是否需要后续处理, 如 seed 后重建索引）。
+func (r *Runner) Up(fsys fs.FS, tableName string) (int, error) {
 	opts := []goose.ProviderOption{goose.WithTableName(tableName)}
 	provider, err := goose.NewProvider(goose.DialectSQLite3, r.db.Pool().DB, fsys, opts...)
 	if err != nil {
-		return fmt.Errorf("migrations: provider: %w", err)
+		return 0, fmt.Errorf("migrations: provider: %w", err)
 	}
-	if _, err := provider.Up(context.Background()); err != nil {
-		return fmt.Errorf("migrations: up: %w", err)
+	results, err := provider.Up(context.Background())
+	if err != nil {
+		return 0, fmt.Errorf("migrations: up: %w", err)
 	}
-	return nil
+	return len(results), nil
 }
 
 // UpDir 从本地目录执行迁移（开发期改迁移文件即生效, 不用重新编译 embed）。
-func (r *Runner) UpDir(dir string, tableName string) error {
+func (r *Runner) UpDir(dir string, tableName string) (int, error) {
 	return r.Up(os.DirFS(dir), tableName)
 }
