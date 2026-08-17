@@ -146,7 +146,10 @@ export default {
                 var defs = res.types || {}
                 Object.keys(defs).forEach(function (t) {
                     if ((defs[t].view || '') !== 'tree') return
-                    menuData.value.push({ key: 'tree-' + t, label: t, section: 'tree',
+                    var key = 'tree-' + t
+                    var exists = menuData.value.some(function (m) { return m.key === key })
+                    if (exists) return // 重复执行（checkAuth + doLogin 都可能调）不重复 push
+                    menuData.value.push({ key: key, label: t, section: 'tree',
                         icon: 'Share', route: 'tree', params: { type: t } })
                 })
             } catch (e) { console.error('[panel] loadTreeMenus failed:', e) }
@@ -159,6 +162,8 @@ export default {
                 ;(res.items || []).forEach(function (p) {
                     if (!p.vue || !p.path) return
                     var name = 'panel' + p.path.replace(/[^a-zA-Z0-9]/g, '')
+                    var exists = menuData.value.some(function (m) { return m.key === name })
+                    if (exists) return // 去重（与 loadTreeMenus 同理）
                     router.addRoute({ name: name, path: p.path, component: Vue.defineAsyncComponent({
                         loader: function () { return Panel.loadComponent(p.vue) },
                         loadingComponent: { template: '<div style="padding:40px;text-align:center;color:#999;">加载中...</div>' },
@@ -180,6 +185,8 @@ export default {
                 await $api.login(loginForm.username, loginForm.password)
                 user.value = await $api.me()
                 phase.value = 'app'
+                loadPanels()   // 站点面板: 动态注册路由 + 菜单
+                loadTreeMenus() // tree 类型独立菜单（view: tree）
                 if (defaultPage) router.push({ name: defaultPage })
             } catch (_) {
                 loginForm.error = '用户名或密码错误'
