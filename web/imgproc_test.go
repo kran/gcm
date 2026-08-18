@@ -124,6 +124,30 @@ func TestServeImg(t *testing.T) {
 		t.Fatalf("jfif: body = %q, want original", w.Body.String())
 	}
 
+	// fmt=jpg: 输出转 JPEG（体积/格式按参数）, 缓存扩展名 .jpg
+	req = httptest.NewRequest("GET", "/uploads/test.jpg?w=200&h=150&mode=cover&fmt=jpg", nil)
+	w = httptest.NewRecorder()
+	serveImg(uploads, &CmsCtx{BaseContext: cho.MakeBaseContext(w, req)}, fs)
+	if w.Code != http.StatusOK {
+		t.Fatalf("fmt=jpg: code = %d", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "image/jpeg" {
+		t.Fatalf("fmt=jpg: content-type = %s, want image/jpeg", ct)
+	}
+	// 缓存文件名带 .jpg
+	cachePath = imgCachePath(uploads, imgParams{W: 200, H: 150, Mode: "cover", Fmt: "jpg"}, "/uploads/test.jpg")
+	if _, err := os.Stat(cachePath); err != nil {
+		t.Fatalf("fmt=jpg cache not written: %v", err)
+	}
+
+	// 非法 fmt → 400
+	req = httptest.NewRequest("GET", "/uploads/test.jpg?w=100&fmt=gif", nil)
+	w = httptest.NewRecorder()
+	serveImg(uploads, &CmsCtx{BaseContext: cho.MakeBaseContext(w, req)}, fs)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("bad fmt: code = %d, want 400", w.Code)
+	}
+
 	// 不存在的文件 → 404
 	req = httptest.NewRequest("GET", "/uploads/nope.jpg?w=100", nil)
 	w = httptest.NewRecorder()

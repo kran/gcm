@@ -24,6 +24,7 @@ const maxImgDim = 4000
 type imgParams struct {
 	W, H int
 	Mode string
+	Fmt  string // 输出格式: jpg/png（空 = 保持原格式）
 }
 
 // parseImgParams 解析查询参数; 三态: (p, true) 处理 / (p, false) 无参数原图 / err 非法参数。
@@ -56,13 +57,30 @@ func parseImgParams(r *http.Request) (imgParams, bool, error) {
 			return imgParams{}, false, fmt.Errorf("invalid mode")
 		}
 	}
+	// fmt: 输出格式（jpg/jpeg/png; 空 = 保持原格式。照片类指定 jpg 体积降 90%）
+	if f := strings.ToLower(q.Get("fmt")); f != "" {
+		switch f {
+		case "jpg", "jpeg":
+			p.Fmt = "jpg"
+		case "png":
+			p.Fmt = "png"
+		default:
+			return imgParams{}, false, fmt.Errorf("invalid fmt")
+		}
+	}
 	return p, true, nil
 }
 
 // imgCachePath 缓存文件路径（basename 保证无路径穿越; 原文件名唯一随机）。
+// fmt 指定时缓存扩展名用 fmt（决定 Save 编码格式）。
 func imgCachePath(uploads string, p imgParams, reqPath string) string {
 	base := filepath.Base(reqPath)
-	return filepath.Join(uploads, ".cache", fmt.Sprintf("%dx%d-%s-%s", p.W, p.H, p.Mode, base))
+	baseNoExt := strings.TrimSuffix(base, filepath.Ext(base))
+	ext := filepath.Ext(base)
+	if p.Fmt != "" {
+		ext = "." + p.Fmt // 输出格式由 fmt 决定（照片类 jpg 降体积）
+	}
+	return filepath.Join(uploads, ".cache", fmt.Sprintf("%dx%d-%s-%s%s", p.W, p.H, p.Mode, baseNoExt, ext))
 }
 
 // serveImg 图片处理入口: 无参数 → 原图直出; 有参数 → 缓存命中直出, 否则处理落盘。

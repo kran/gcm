@@ -69,9 +69,9 @@ func (e *Engine) funcMap() template.FuncMap {
 	}
 	builtins := template.FuncMap{
 		"safeHTML": func(v any) template.HTML { return template.HTML(fmt.Sprint(v)) },
-		// img 图片裁剪 URL: 本地 /uploads/ 才拼 ?w=&h=&mode=（CDN/外部 URL 原样返回）。
-		// 单边 0 = 按比例; mode: cover(默认)/fit/crop。
-		"img": func(url string, w, h int, mode string) string {
+		// img 图片裁剪 URL: 本地 /uploads/ 才拼 ?w=&h=&mode=&fmt=（CDN/外部 URL 原样返回）。
+		// 单边 0 = 按比例; mode: cover(默认)/fit/crop; fmt: jpg/png（照片类 jpg 降体积）。
+		"img": func(url string, w, h int, mode string, fmtArgs ...string) string {
 			if !strings.HasPrefix(url, "/uploads/") {
 				return url
 			}
@@ -89,6 +89,9 @@ func (e *Engine) funcMap() template.FuncMap {
 			}
 			if mode != "" {
 				b.WriteString("&mode=" + mode)
+			}
+			if len(fmtArgs) > 0 && fmtArgs[0] != "" {
+				b.WriteString("&fmt=" + fmtArgs[0])
 			}
 			return b.String()
 		},
