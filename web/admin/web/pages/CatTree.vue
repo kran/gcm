@@ -2,12 +2,10 @@
     <ul class="ctree" :class="{ root: level === 0 }">
         <li v-for="n in nodes" :key="n.id" :class="{ 'has-children': hasKids(n) }">
             <div class="ctree-row" :class="{ active: n.id === activeId }" @click="$emit('select', n)">
-                <span v-if="hasKids(n)" class="ctree-twisty" @click.stop="toggle(n.id)">
-                    <el-icon :size="11"><CaretBottom v-if="expanded.has(n.id)" /><CaretRight v-else /></el-icon>
-                </span>
-                <span v-else class="ctree-twisty is-leaf"></span>
-                <el-icon class="ctree-icon" :size="15">
-                    <FolderOpened v-if="expanded.has(n.id)" /><Folder v-else />
+                <el-icon class="ctree-icon" :class="{ clickable: hasKids(n) }" :size="15"
+                         @click.stop="toggle(n.id)">
+                    <template v-if="hasKids(n)"><FolderOpened v-if="expanded.has(n.id)" /><Folder v-else /></template>
+                    <Document v-else />
                 </el-icon>
                 <span class="ctree-label">{{ n.label }}</span>
                 <span v-if="n.count" class="ctree-count">{{ n.count }}</span>
@@ -31,12 +29,7 @@ export default {
     emits: ['select'],
     data() { return { expanded: new Set() } },
     created() {
-        console.log('[CatTree] created, nodes:', (this.nodes || []).length, 'level:', this.level)
-        const walk = (list) => (list || []).forEach(n => {
-            this.expanded.add(n.id)
-            walk(n.children)
-        })
-        walk(this.nodes)
+        // 默认收起（点击文件夹展开 — 用户主动操作; 不再默认全展开）
     },
     methods: {
         hasKids(n) { return !!(n.children && n.children.length) },
@@ -54,7 +47,7 @@ export default {
 .ctree li > ul { padding-left: 23px; } /* 23 = 三角中心 13 + 横枝 10 */
 
 /* 分支连接线: 横枝 + 纵线, 末枝纵线止于拐点。
-   对齐基准: 三角中心 = row padding 6px + twisty 半宽 7px = 13px;
+   对齐基准: 文件夹 icon 中心 = row padding 6px + icon 半宽 7.5px ≈ 13px;
    线 x = 子 ul padding 23px + 偏移 -10px = 13px ✓ */
 .ctree li::before {
     content: '';
@@ -99,16 +92,9 @@ export default {
 }
 .ctree-row.active .ctree-icon { color: #0052CC; }
 
-.ctree-twisty {
-    width: 14px;
-    flex-shrink: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    color: #6B778C;
-}
-.ctree-twisty.is-leaf { width: 14px; }
 .ctree-icon { color: #6B778C; flex-shrink: 0; }
+.ctree-icon.clickable { cursor: pointer; }
+.ctree-icon.clickable:hover { color: #0052CC; }
 .ctree-label {
     flex: 1;
     overflow: hidden;

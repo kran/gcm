@@ -45,15 +45,15 @@
                             <el-tag size="small">{{ row.type }}</el-tag>
                         </template>
                     </el-table-column>
-                    <el-table-column label="标题" min-width="180">
+                    <el-table-column label="标题" min-width="360" show-overflow-tooltip>
                         <template #default="{ row }">{{ row.title || row.slug || '#' + row.id }}</template>
                     </el-table-column>
-                    <el-table-column label="溯源" min-width="120">
+                    <el-table-column label="溯源" min-width="160" show-overflow-tooltip>
                         <template #default="{ row }">
                             <code style="font-size:12px;">{{ row.via_field }}</code>
                         </template>
                     </el-table-column>
-                    <el-table-column prop="slug" label="slug" min-width="120" />
+                    <el-table-column prop="slug" label="slug" min-width="160" show-overflow-tooltip />
                     <el-table-column label="操作" width="170" fixed="right">
                         <template #default="{ row }">
                             <node-ops :node="row" :defs="defsByType" @changed="loadInbound" />
@@ -96,7 +96,7 @@ export default {
             rows: [],
             total: 0,
             page: 1,
-            size: 20,
+            size: 25,
             loading: false,
             refTypes: [],          // 引用该 tree 类型的类型（新建选项）
             createType: '',        // 当前新建的类型

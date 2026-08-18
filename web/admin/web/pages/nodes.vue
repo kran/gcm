@@ -57,10 +57,10 @@
       <!-- 树视图（view: tree 类型, 全量不分页; el-table 树形模式, 行操作: 编辑/新建子/删除） -->
       <el-table v-if="treeMode" :data="treeNodes" v-loading="loading" row-key="id"
                 :tree-props="{ children: 'children' }" default-expand-all >
-        <el-table-column label="标题" min-width="220">
+        <el-table-column label="标题" min-width="360" show-overflow-tooltip>
           <template #default="{ row: r }"><span style="">{{ titleOf(r) }}</span></template>
         </el-table-column>
-        <el-table-column label="slug" min-width="140">
+        <el-table-column label="slug" min-width="160" show-overflow-tooltip>
           <template #default="{ row: r }"><code>{{ r.slug || '#' + r.id }}</code></template>
         </el-table-column>
         <el-table-column label="状态" width="90">
@@ -80,10 +80,10 @@
 
       <el-table v-else :data="rows" v-loading="loading">
         <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column label="标题" min-width="200">
+        <el-table-column label="标题" min-width="360" show-overflow-tooltip>
           <template #default="{ row: r }"><span style="">{{ titleOf(r) }}</span></template>
         </el-table-column>
-        <el-table-column label="slug" min-width="140">
+        <el-table-column label="slug" min-width="160" show-overflow-tooltip>
           <template #default="{ row: r }"><code>{{ r.slug || '#' + r.id }}</code></template>
         </el-table-column>
         <el-table-column label="状态" width="90">
@@ -140,7 +140,7 @@ export default {
             treeNodes: [],
             parentField: 'parent',
             filterTrees: [],   // 多个树过滤: [{def, field, label, nodes, active, activeLabel}]
-            query: { type: '', status: null, q: '', page: 1, size: 20 },
+            query: { type: '', status: null, q: '', page: 1, size: 25 },
             createVisible: false,
         }
     },
