@@ -9,7 +9,7 @@
       <el-button type="primary" size="small" @click="openEdit(null)">新建</el-button>
     </div>
 
-    <el-table :data="rows" v-loading="loading" border stripe size="small">
+    <el-table :data="rows" v-loading="loading" >
       <el-table-column prop="key" label="key" width="200">
         <template #default="{ row: r }"><code>{{ r.key }}</code></template>
       </el-table-column>
@@ -114,7 +114,7 @@ export default {
             // 编辑形态枚举（cmx piece 同款 — 前端按形态渲染控件）
             kinds: ['text', 'textarea', 'number', 'bool', 'object', 'array', 'upload-file', 'richtext'],
             dialog: { visible: false, saving: false, isNew: true, key: '', group: '',
-                kind: 'object', scalar: null, entries: [], array: [] },
+                kind: 'textarea', scalar: null, entries: [], array: [] },
         }
     },
     async mounted() { await this.refresh() },

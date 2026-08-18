@@ -133,3 +133,31 @@
 - fail-loud: 配置/写入/查询错误响亮上抛，不静默
 - 存的就是真的: 不物化推理，传递闭包只在查询时展开
 - 引用是唯一原语: 不新增关系表；关系节点 = nodes 的 type
+
+## 代码审查（2026-08-18 CRUD + Lisp 健壮性盘点）
+
+### 高优先级
+- [ ] A3: CreateNode/UpdateNode slug 查重 — 重复 slug 撞 UNIQUE 约束返回 500（管理 API 应 409/400）;
+      模板 GetNodeBySlug 重复 slug 静默取错节点
+- [ ] B7: Lisp parseToken 引号字符串不支持 `\"` 转义 — 字符串含引号破坏解析（搜索含引号内容会挂）
+
+### 中优先级
+- [ ] A1: UpdateNode 全量 ref 语义 — 先删光全部 ref 边再按 n.Fields 重建;
+      调用方漏传 ref 字段 = 静默丢引用（语义已文档化, 无 diff 保护 — 确认 admin 表单传全字段）
+- [ ] B6: subtreeFn 编译期查库（GetNodeBySlug + Subtree）无缓存 — 同请求多次 (subtree "x") 重复查
+- [ ] B2: like 无自动 % — (like $title "关键词") 是精确子串必须自己写 %关键词%;
+      与"包含"直觉不符, 文档化或加 contains
+
+### 低优先级
+- [ ] A5: CreateNode 就地修改调用方 Node（Fields 剥 ref）— UpdateNode 已拷贝, CreateNode 不一致
+- [ ] A2: UpdateNode 并发无乐观锁（last-write-wins）— CMS 后台可接受, 文档化
+- [ ] A4: UpdateNode slug 空串 = 清空 slug — 节点从 URL 消失但还在, 文档化
+
+### 验证记录（2026-08-18）
+- [x] B1: json_extract NULL 三值逻辑 — 缺失字段 = 永假（含 !=）— 语义正确, 无问题
+- [x] B4: edge 开层嵌套别名（e1/t1 → e2/t2）— 子查询内别名独立, 无冲突
+- [x] B5: NOT 对 NULL 列语义与 != 一致 — 无问题
+- [x] B8: arrayValue 占位符错误吞掉后落入单值分支, 最终仍报错 — 逻辑正确
+- [x] B9/B10: 字段名/JSON 路径参数化 + quote — 注入安全, 无问题
+- [x] B11: edge 入边一元带 src.type 校验（出边无）— 语义不对称但合理
+- [x] B12: in 空数组 1=0 各形态一致 — 无问题

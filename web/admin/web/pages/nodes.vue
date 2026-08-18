@@ -3,7 +3,7 @@
     <!-- 左侧 type 列表（类型定义驱动, 动态） -->
     <div class="nodes-tree">
       <div class="nodes-tree-header">
-        <span style="font-weight:600;font-size:14px;">类型</span>
+        <span style="font-size:14px;">类型</span>
         <el-button link type="primary" size="small" @click="loadTypes">刷新</el-button>
       </div>
       <div class="type-list">
@@ -19,7 +19,7 @@
     <!-- 右侧列表 -->
     <div class="nodes-list">
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
-        <span style="font-size:16px;font-weight:600;">{{ query.type || '未选择类型' }}</span>
+        <span style="font-size:16px;">{{ query.type || '未选择类型' }}</span>
         <el-select v-model="query.status" placeholder="状态" size="small" style="width:110px"
                    clearable @change="refresh">
           <el-option label="已发布" :value="1" />
@@ -56,9 +56,9 @@
 
       <!-- 树视图（view: tree 类型, 全量不分页; el-table 树形模式, 行操作: 编辑/新建子/删除） -->
       <el-table v-if="treeMode" :data="treeNodes" v-loading="loading" row-key="id"
-                :tree-props="{ children: 'children' }" default-expand-all border stripe size="small">
+                :tree-props="{ children: 'children' }" default-expand-all >
         <el-table-column label="标题" min-width="220">
-          <template #default="{ row: r }"><span style="font-weight:600;">{{ titleOf(r) }}</span></template>
+          <template #default="{ row: r }"><span style="">{{ titleOf(r) }}</span></template>
         </el-table-column>
         <el-table-column label="slug" min-width="140">
           <template #default="{ row: r }"><code>{{ r.slug || '#' + r.id }}</code></template>
@@ -78,10 +78,10 @@
         </el-table-column>
       </el-table>
 
-      <el-table v-else :data="rows" v-loading="loading" border stripe size="small">
+      <el-table v-else :data="rows" v-loading="loading">
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column label="标题" min-width="200">
-          <template #default="{ row: r }"><span style="font-weight:600;">{{ titleOf(r) }}</span></template>
+          <template #default="{ row: r }"><span style="">{{ titleOf(r) }}</span></template>
         </el-table-column>
         <el-table-column label="slug" min-width="140">
           <template #default="{ row: r }"><code>{{ r.slug || '#' + r.id }}</code></template>
@@ -291,7 +291,7 @@ export default {
 .nodes-page { display: flex; gap: 16px; flex: 1; min-height: 0; }
 .nodes-tree {
     width: 230px; flex-shrink: 0;
-    border-right: 1px solid #eee; padding-right: 12px;
+    padding-right: 12px;
     overflow: auto;
 }
 .nodes-tree-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }

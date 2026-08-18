@@ -38,7 +38,7 @@
                         </el-popover>
                     </span>
                 </div>
-                <el-table :data="rows" v-loading="loading" border stripe size="small">
+                <el-table :data="rows" v-loading="loading" >
                     <el-table-column prop="id" label="ID" width="70" />
                     <el-table-column label="类型" width="110">
                         <template #default="{ row }">

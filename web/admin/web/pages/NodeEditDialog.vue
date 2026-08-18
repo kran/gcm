@@ -1,6 +1,6 @@
 <template>
     <el-dialog append-to-body v-model="visibleModel" :title="isEdit ? '编辑 #' + node.id : '新建 ' + (typeName || '')"
-               width="80vw">
+               width="80vw" :close-on-click-modal="false" :close-on-press-escape="false">
         <el-form>
             <el-form-item label="slug">
                 <el-input v-model="form.slug" placeholder="URL 段（留空 = /node/{id}）" />
