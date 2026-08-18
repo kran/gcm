@@ -69,6 +69,29 @@ func (e *Engine) funcMap() template.FuncMap {
 	}
 	builtins := template.FuncMap{
 		"safeHTML": func(v any) template.HTML { return template.HTML(fmt.Sprint(v)) },
+		// img 图片裁剪 URL: 本地 /uploads/ 才拼 ?w=&h=&mode=（CDN/外部 URL 原样返回）。
+		// 单边 0 = 按比例; mode: cover(默认)/fit/crop。
+		"img": func(url string, w, h int, mode string) string {
+			if !strings.HasPrefix(url, "/uploads/") {
+				return url
+			}
+			var b strings.Builder
+			b.WriteString(url)
+			b.WriteString("?")
+			if w > 0 {
+				b.WriteString(fmt.Sprintf("w=%d", w))
+			}
+			if h > 0 {
+				if w > 0 {
+					b.WriteString("&")
+				}
+				b.WriteString(fmt.Sprintf("h=%d", h))
+			}
+			if mode != "" {
+				b.WriteString("&mode=" + mode)
+			}
+			return b.String()
+		},
 		"partial": func(name string, data any) (template.HTML, error) {
 			return e.Partial(name, data)
 		},
