@@ -90,14 +90,19 @@ func serveImg(uploads string, ctx *CmsCtx, fs http.Handler) {
 		return
 	}
 	srcPath := filepath.Join(uploads, filepath.FromSlash(rel))
+	// 文件不存在 → 404; 存在但不支持解码（webp 等）→ 原样返回原文件
+	if _, err := os.Stat(srcPath); err != nil {
+		ctx.String(http.StatusNotFound, "404 not found")
+		return
+	}
 	src, err := imaging.Open(srcPath)
 	if err != nil {
-		ctx.String(http.StatusNotFound, "404 not found")
+		fs.ServeHTTP(ctx.W, r) // 不支持格式: 原图直出, 不处理不报错
 		return
 	}
 	dst, err := processImg(src, p)
 	if err != nil {
-		ctx.String(http.StatusBadRequest, "img: "+err.Error())
+		fs.ServeHTTP(ctx.W, r) // 处理失败: 原图直出
 		return
 	}
 	// 落盘缓存（目录存在性）

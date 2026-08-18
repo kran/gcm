@@ -95,6 +95,21 @@ func TestServeImg(t *testing.T) {
 		t.Fatalf("bad param: code = %d, want 400", w.Code)
 	}
 
+	// 不支持格式（伪造 webp — imaging.Open 解码失败）→ 原样返回原文件, 不 404
+	fakeWebp := filepath.Join(uploads, "fake.webp")
+	if err := os.WriteFile(fakeWebp, []byte("fake webp data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest("GET", "/uploads/fake.webp?w=300&h=200", nil)
+	w = httptest.NewRecorder()
+	serveImg(uploads, &CmsCtx{BaseContext: cho.MakeBaseContext(w, req)}, fs)
+	if w.Code != http.StatusOK {
+		t.Fatalf("webp fallback: code = %d, want 200", w.Code)
+	}
+	if w.Body.String() != "fake webp data" {
+		t.Fatalf("webp fallback: body = %q, want original file", w.Body.String())
+	}
+
 	// 不存在的文件 → 404
 	req = httptest.NewRequest("GET", "/uploads/nope.jpg?w=100", nil)
 	w = httptest.NewRecorder()
