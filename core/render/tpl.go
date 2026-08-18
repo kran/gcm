@@ -72,7 +72,7 @@ func (e *Engine) funcMap() template.FuncMap {
 		// img 图片裁剪 URL: 本地 /uploads/ 才拼 ?w=&h=&mode=&fmt=（CDN/外部 URL 原样返回）。
 		// 单边 0 = 按比例; mode: cover(默认)/fit/crop; fmt: jpg/png（照片类 jpg 降体积）。
 		"img": func(url string, w, h int, mode string, fmtArgs ...string) string {
-			if !strings.HasPrefix(url, "/uploads/") {
+			if !strings.HasPrefix(url, "/uploads/") && !strings.HasPrefix(url, "/static/") {
 				return url
 			}
 			var b strings.Builder

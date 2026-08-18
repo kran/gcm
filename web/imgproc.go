@@ -83,8 +83,9 @@ func imgCachePath(uploads string, p imgParams, reqPath string) string {
 	return filepath.Join(uploads, ".cache", fmt.Sprintf("%dx%d-%s-%s%s", p.W, p.H, p.Mode, baseNoExt, ext))
 }
 
-// serveImg 图片处理入口: 无参数 → 原图直出; 有参数 → 缓存命中直出, 否则处理落盘。
-func serveImg(uploads string, ctx *CmsCtx, fs http.Handler) {
+// serveImg 图片处理入口（uploads/static 通用）: 无参数 → 原图直出;
+// 有参数 → 缓存命中直出, 否则处理落盘。prefix = "/uploads/" 或 "/static/"。
+func serveImg(baseDir, prefix string, ctx *CmsCtx, fs http.Handler) {
 	r := ctx.R
 	p, ok, err := parseImgParams(r)
 	if err != nil {
@@ -96,24 +97,24 @@ func serveImg(uploads string, ctx *CmsCtx, fs http.Handler) {
 		return
 	}
 	// 缓存命中直出
-	cachePath := imgCachePath(uploads, p, r.URL.Path)
+	cachePath := imgCachePath(baseDir, p, r.URL.Path)
 	if st, err := os.Stat(cachePath); err == nil && st.Mode().IsRegular() {
 		http.ServeFile(ctx.W, r, cachePath)
 		return
 	}
-	// 原图路径（uploads 目录内 — 防穿越）
-	rel := strings.TrimPrefix(r.URL.Path, "/uploads/")
+	// 原图路径（目录内 — 防穿越）
+	rel := strings.TrimPrefix(r.URL.Path, prefix)
 	if strings.Contains(rel, "..") {
 		ctx.String(http.StatusNotFound, "404 not found")
 		return
 	}
-	srcPath := filepath.Join(uploads, filepath.FromSlash(rel))
+	srcPath := filepath.Join(baseDir, filepath.FromSlash(rel))
 	// 文件不存在 → 404; 存在但不支持解码（webp 等）→ 原样返回原文件
 	if _, err := os.Stat(srcPath); err != nil {
 		ctx.String(http.StatusNotFound, "404 not found")
 		return
 	}
-	src, err := imaging.Open(srcPath)
+	src, err := imaging.Open(srcPath, imaging.AutoOrientation(true))
 	if err != nil {
 		fs.ServeHTTP(ctx.W, r) // 不支持格式: 原图直出, 不处理不报错
 		return

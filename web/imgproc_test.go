@@ -45,7 +45,7 @@ func TestServeImg(t *testing.T) {
 	// 无参数 → 原图直出（200, 内容就是原文件）
 	req := httptest.NewRequest("GET", "/uploads/test.jpg", nil)
 	w := httptest.NewRecorder()
-	serveImg(uploads, &CmsCtx{BaseContext: cho.MakeBaseContext(w, req)}, fs)
+	serveImg(uploads, "/uploads/", &CmsCtx{BaseContext: cho.MakeBaseContext(w, req)}, fs)
 	if w.Code != http.StatusOK {
 		t.Fatalf("plain: code = %d", w.Code)
 	}
@@ -53,7 +53,7 @@ func TestServeImg(t *testing.T) {
 	// cover 300x200 → 200 + 缓存文件生成
 	req = httptest.NewRequest("GET", "/uploads/test.jpg?w=300&h=200&mode=cover", nil)
 	w = httptest.NewRecorder()
-	serveImg(uploads, &CmsCtx{BaseContext: cho.MakeBaseContext(w, req)}, fs)
+	serveImg(uploads, "/uploads/", &CmsCtx{BaseContext: cho.MakeBaseContext(w, req)}, fs)
 	if w.Code != http.StatusOK {
 		t.Fatalf("cover: code = %d", w.Code)
 	}
@@ -74,7 +74,7 @@ func TestServeImg(t *testing.T) {
 	// 命中缓存（第二次请求 — 不重新处理, 直接出缓存文件）
 	req = httptest.NewRequest("GET", "/uploads/test.jpg?w=300&h=200&mode=cover", nil)
 	w2 := httptest.NewRecorder()
-	serveImg(uploads, &CmsCtx{BaseContext: cho.MakeBaseContext(w2, req)}, fs)
+	serveImg(uploads, "/uploads/", &CmsCtx{BaseContext: cho.MakeBaseContext(w2, req)}, fs)
 	if w2.Code != http.StatusOK {
 		t.Fatalf("cached: code = %d", w2.Code)
 	}
@@ -82,7 +82,7 @@ func TestServeImg(t *testing.T) {
 	// fit 200x150 → 等比内嵌（100x80 → 200x160? no — fit 缩放至 200 宽, 高按比例 160 — 但目标 200x150 内嵌 → 187x150）
 	req = httptest.NewRequest("GET", "/uploads/test.jpg?w=200&h=150&mode=fit", nil)
 	w = httptest.NewRecorder()
-	serveImg(uploads, &CmsCtx{BaseContext: cho.MakeBaseContext(w, req)}, fs)
+	serveImg(uploads, "/uploads/", &CmsCtx{BaseContext: cho.MakeBaseContext(w, req)}, fs)
 	if w.Code != http.StatusOK {
 		t.Fatalf("fit: code = %d", w.Code)
 	}
@@ -90,7 +90,7 @@ func TestServeImg(t *testing.T) {
 	// 非法参数 → 400
 	req = httptest.NewRequest("GET", "/uploads/test.jpg?w=999999", nil)
 	w = httptest.NewRecorder()
-	serveImg(uploads, &CmsCtx{BaseContext: cho.MakeBaseContext(w, req)}, fs)
+	serveImg(uploads, "/uploads/", &CmsCtx{BaseContext: cho.MakeBaseContext(w, req)}, fs)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("bad param: code = %d, want 400", w.Code)
 	}
@@ -102,7 +102,7 @@ func TestServeImg(t *testing.T) {
 	}
 	req = httptest.NewRequest("GET", "/uploads/fake.webp?w=300&h=200", nil)
 	w = httptest.NewRecorder()
-	serveImg(uploads, &CmsCtx{BaseContext: cho.MakeBaseContext(w, req)}, fs)
+	serveImg(uploads, "/uploads/", &CmsCtx{BaseContext: cho.MakeBaseContext(w, req)}, fs)
 	if w.Code != http.StatusOK {
 		t.Fatalf("webp fallback: code = %d, want 200", w.Code)
 	}
@@ -116,7 +116,7 @@ func TestServeImg(t *testing.T) {
 	jfifOrig, _ := os.ReadFile(jfifPath)
 	req = httptest.NewRequest("GET", "/uploads/test.jfif?w=200", nil)
 	w = httptest.NewRecorder()
-	serveImg(uploads, &CmsCtx{BaseContext: cho.MakeBaseContext(w, req)}, fs)
+	serveImg(uploads, "/uploads/", &CmsCtx{BaseContext: cho.MakeBaseContext(w, req)}, fs)
 	if w.Code != http.StatusOK {
 		t.Fatalf("jfif: code = %d, want 200", w.Code)
 	}
@@ -127,7 +127,7 @@ func TestServeImg(t *testing.T) {
 	// fmt=jpg: 输出转 JPEG（体积/格式按参数）, 缓存扩展名 .jpg
 	req = httptest.NewRequest("GET", "/uploads/test.jpg?w=200&h=150&mode=cover&fmt=jpg", nil)
 	w = httptest.NewRecorder()
-	serveImg(uploads, &CmsCtx{BaseContext: cho.MakeBaseContext(w, req)}, fs)
+	serveImg(uploads, "/uploads/", &CmsCtx{BaseContext: cho.MakeBaseContext(w, req)}, fs)
 	if w.Code != http.StatusOK {
 		t.Fatalf("fmt=jpg: code = %d", w.Code)
 	}
@@ -143,7 +143,7 @@ func TestServeImg(t *testing.T) {
 	// 非法 fmt → 400
 	req = httptest.NewRequest("GET", "/uploads/test.jpg?w=100&fmt=gif", nil)
 	w = httptest.NewRecorder()
-	serveImg(uploads, &CmsCtx{BaseContext: cho.MakeBaseContext(w, req)}, fs)
+	serveImg(uploads, "/uploads/", &CmsCtx{BaseContext: cho.MakeBaseContext(w, req)}, fs)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("bad fmt: code = %d, want 400", w.Code)
 	}
@@ -151,7 +151,7 @@ func TestServeImg(t *testing.T) {
 	// 不存在的文件 → 404
 	req = httptest.NewRequest("GET", "/uploads/nope.jpg?w=100", nil)
 	w = httptest.NewRecorder()
-	serveImg(uploads, &CmsCtx{BaseContext: cho.MakeBaseContext(w, req)}, fs)
+	serveImg(uploads, "/uploads/", &CmsCtx{BaseContext: cho.MakeBaseContext(w, req)}, fs)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("missing: code = %d, want 404", w.Code)
 	}

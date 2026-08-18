@@ -58,11 +58,3 @@ func (s *Site) nodeHandler(ctx *CmsCtx) {
 	// 统一走 Render（Fire HookRender — 页面级数据注入与自定义路由一致）
 	ctx.Render(candidates, data)
 }
-
-// staticHandler /static/* → 磁盘目录。
-func (s *Site) staticHandler() func(ctx *CmsCtx) {
-	fs := http.StripPrefix("/static", http.FileServer(http.Dir(s.static)))
-	return func(ctx *CmsCtx) {
-		fs.ServeHTTP(ctx.W, ctx.R)
-	}
-}
