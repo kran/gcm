@@ -110,6 +110,20 @@ func TestServeImg(t *testing.T) {
 		t.Fatalf("webp fallback: body = %q, want original file", w.Body.String())
 	}
 
+	// jfif（有效 JPEG 内容 + .jfif 扩展名 — Open 成功但 Save 无编码器）→ 原图直出不 404
+	jfifPath := filepath.Join(uploads, "test.jfif")
+	makeTestJPG(t, jfifPath) // 复用造图（内容是合法 JPEG）
+	jfifOrig, _ := os.ReadFile(jfifPath)
+	req = httptest.NewRequest("GET", "/uploads/test.jfif?w=200", nil)
+	w = httptest.NewRecorder()
+	serveImg(uploads, &CmsCtx{BaseContext: cho.MakeBaseContext(w, req)}, fs)
+	if w.Code != http.StatusOK {
+		t.Fatalf("jfif: code = %d, want 200", w.Code)
+	}
+	if w.Body.String() != string(jfifOrig) {
+		t.Fatalf("jfif: body = %q, want original", w.Body.String())
+	}
+
 	// 不存在的文件 → 404
 	req = httptest.NewRequest("GET", "/uploads/nope.jpg?w=100", nil)
 	w = httptest.NewRecorder()

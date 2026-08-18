@@ -105,9 +105,12 @@ func serveImg(uploads string, ctx *CmsCtx, fs http.Handler) {
 		fs.ServeHTTP(ctx.W, r) // 处理失败: 原图直出
 		return
 	}
-	// 落盘缓存（目录存在性）
+	// 落盘缓存（Save 失败 — jfif 等无编码器的扩展名 — 原图直出不处理）
 	if err := os.MkdirAll(filepath.Dir(cachePath), 0o755); err == nil {
-		_ = imaging.Save(dst, cachePath)
+		if err := imaging.Save(dst, cachePath); err != nil {
+			fs.ServeHTTP(ctx.W, r) // 编码器缺失: 原图直出
+			return
+		}
 	}
 	// 输出（直接写缓存文件 — 与落盘一致）
 	http.ServeFile(ctx.W, r, cachePath)
